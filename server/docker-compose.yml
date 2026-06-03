@@ -1,0 +1,50 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastpos_backend
+    volumes:
+      # IMPORTANT: mount only the SQLite file location, NOT the database/ dir.
+      # This preserves migrations/ and seeders/ from the image.
+      - sqlite_data:/var/db
+    ports:
+      - "8002:8000"
+    environment:
+      APP_NAME: Laravel
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_KEY: base64:Zaf2VcM0qSQF7WQ48oCUtbgFIYtd8JBGn97RBFI9xo4=
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: sqlite
+      # SQLite file lives in the named volume at /var/db, NOT inside database/
+      DB_DATABASE: /var/db/database.sqlite
+      FRONTEND_URL: http://localhost:3000
+      SANCTUM_STATEFUL_DOMAINS: "localhost:3000,127.0.0.1:3000"
+      SESSION_DRIVER: database
+      SESSION_LIFETIME: "120"
+      SESSION_DOMAIN: localhost
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      LOG_CHANNEL: stack
+      LOG_LEVEL: debug
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-alpine
+    container_name: fastpos_frontend
+    volumes:
+      - ../client:/app
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8002/api/v1
+    command: >
+      sh -c "npm install && npm run dev -- --hostname 0.0.0.0"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:

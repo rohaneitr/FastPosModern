@@ -1,0 +1,39 @@
+Listed directory seeders
+Viewed DatabaseSeeder.php:1-96
+Ran command: `php artisan db:seed --class=RolesAndPermissionsSeeder`
+Edited DatabaseSeeder.php
+Ran command: `php artisan db:seed`
+Ran command: `.\vendor\bin\sail artisan db:seed`
+
+I have successfully updated the backend logic and the `DatabaseSeeder.php` file to generate and map the specific login credentials for all roles!
+
+Here are the exact demo credentials you requested, mapped to their specific access levels and roles:
+
+### 🌍 Super Admin (Platform Owner)
+* **Role**: `SuperAdmin` (Has access to `http://localhost:3000/superadmin/superadmin`)
+* **Email**: `superadmin@fastpos.com`
+* **Password**: `Secret@12`
+
+### 🏢 Business Admin (Tenant Owner)
+* **Role**: `BusinessAdmin` (Has access to `http://localhost:3000/business/...`)
+* **Email**: `admin@example.com`
+* **Password**: `Secret@12`
+
+### 🛒 Cashier (Staff)
+* **Role**: `Cashier` (Has access to `http://localhost:3000/user/pos`)
+* **Email**: `cashier@example.com`
+* **Password**: `Secret@12`
+
+### 📦 Inventory Manager (Staff)
+* **Role**: `InventoryManager`
+* **Email**: `inventory@example.com`
+* **Password**: `Secret@12`
+
+### 📈 Accountant (Staff)
+* **Role**: `Accountant`
+* **Email**: `accountant@example.com`
+* **Password**: `Secret@12`
+
+I also updated the seeder to properly associate the Cashier, Inventory Manager, and Accountant users with the specific `business_id` of the `BusinessAdmin`, ensuring Tenant Security is maintained out-of-the-box. 
+
+*(Note: PHP does not appear to be running globally in this local terminal session, so you may need to run `php artisan migrate:fresh --seed` from your standard dev environment to officially push these new rows into SQLite before testing the logins).*
