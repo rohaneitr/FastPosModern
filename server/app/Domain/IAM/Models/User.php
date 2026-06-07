@@ -17,6 +17,10 @@ class User extends Authenticatable
 
     protected $guard_name = 'web';
 
+    protected static function newFactory()
+    {
+        return \Database\Factories\UserFactory::new();
+    }
 
     /**
      * The attributes that are mass assignable.
@@ -35,6 +39,8 @@ class User extends Authenticatable
         'user_type',
         'allow_login',
         'settings',
+        'avatar',
+        'theme_preference',
     ];
 
     /**
@@ -81,5 +87,13 @@ class User extends Authenticatable
     public function business()
     {
         return $this->belongsTo(Business::class);
+    }
+
+    /**
+     * The employee profile associated with this user.
+     */
+    public function employeeProfile()
+    {
+        return $this->hasOne(\App\Domain\HR\Models\EmployeeProfile::class);
     }
 }

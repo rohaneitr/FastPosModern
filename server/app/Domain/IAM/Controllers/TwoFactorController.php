@@ -47,9 +47,9 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * Confirm 2FA setup with OTP code
+     * Verify 2FA setup with OTP code
      */
-    public function confirm(Request $request)
+    public function verify(Request $request)
     {
         $request->validate(['code' => 'required|string']);
         

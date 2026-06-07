@@ -21,12 +21,14 @@ return [
 
     'allowed_origins' => array_filter([
         env('FRONTEND_URL', 'http://localhost:3000'),
-        // Also allow the 127.0.0.1 equivalent so browsers that resolve
-        // 'localhost' as 127.0.0.1 don't get a CORS rejection.
         str_replace('localhost', '127.0.0.1', env('FRONTEND_URL', 'http://localhost:3000')),
+        'http://*.localhost:3000'
     ]),
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => [
+        '#^https?://.*\.localhost:3000$#',
+        '#^https?://.*\.fastpos\.app$#'
+    ],
 
     'allowed_headers' => ['*'],
 

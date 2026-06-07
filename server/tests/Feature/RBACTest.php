@@ -20,12 +20,12 @@ class RBACTest extends TestCase
         // Reset permission cache
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        DB::table('businesses')->insert([
-            ['id' => 1, 'name' => 'Biz A', 'is_active' => true],
-        ]);
+        \Illuminate\Support\Facades\DB::table('businesses')->insert(
+            ['id' => 1, 'name' => 'Biz A', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(), 'owner_id' => 1]
+        );
         DB::table('locations')->insert(['id' => 1, 'business_id' => 1, 'name' => 'Store']);
-        DB::table('plans')->insert(['id' => 1, 'name' => 'Basic', 'price' => 29, 'interval' => 'month']);
-        DB::table('subscriptions')->insert(['business_id' => 1, 'plan_id' => 1, 'status' => 'active']);
+        DB::table('plans')->updateOrInsert(['id' => 1], ['name' => 'Basic', 'price' => 29, 'interval' => 'month']);
+        DB::table('subscriptions')->updateOrInsert(['business_id' => 1], ['plan_id' => 1, 'status' => 'active']);
 
         // Create roles and permissions
         Permission::firstOrCreate(['name' => 'products.manage']);

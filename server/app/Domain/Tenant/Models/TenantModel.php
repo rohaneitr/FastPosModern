@@ -21,9 +21,9 @@ abstract class TenantModel extends Model
     protected static function booted()
     {
         static::addGlobalScope('tenant', function (Builder $builder) {
-            // Check if there is an authenticated user with a business_id
-            if (auth()->hasUser() && auth()->user()->business_id) {
-                $builder->where('business_id', auth()->user()->business_id);
+            // Check if there is an authenticated user (enforce isolation even if business_id is null)
+            if (auth()->hasUser()) {
+                $builder->where('business_id', auth()->user()->business_id ?? -1);
             }
         });
 

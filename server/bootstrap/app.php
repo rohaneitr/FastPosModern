@@ -14,14 +14,28 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        
         $middleware->validateCsrfTokens(except: [
-            '*',
+            'api/*',
+            'api/v1/payments/*/callback',
+            'api/v1/webhooks/*',
+            'api/v1/devices/heartbeat',
+            'api/v1/devices/status'
         ]);
+
+        $middleware->append(\App\Http\Middleware\ActivityLogger::class);
+        $middleware->append(\App\Http\Middleware\SaaSMaintenanceMode::class);
+        $middleware->append(\App\Http\Middleware\EnsureLicenseIsActive::class);
+        $middleware->api(append: [
+            \App\Http\Middleware\IdleTimeoutMiddleware::class,
+        ]);
+
         $middleware->alias([
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'subscribed' => \App\Http\Middleware\CheckSubscription::class,
+            'module' => \App\Http\Middleware\CheckModuleAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

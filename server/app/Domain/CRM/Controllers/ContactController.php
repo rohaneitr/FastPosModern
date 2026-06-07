@@ -33,7 +33,52 @@ class ContactController extends Controller
             });
         }
         
-        return response()->json($query->latest()->paginate(20));
+        $paginator = $query->latest()->paginate(20);
+
+        // Append basic ledger summary for each contact (can be optimized later)
+        $contacts = collect($paginator->items())->map(function ($contact) use ($request) {
+            $businessId = $request->user()->business_id;
+            
+            $totalSales = \Illuminate\Support\Facades\DB::table('transactions')
+                ->where('contact_id', $contact->id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->sum('final_total');
+                
+            $totalReturns = \Illuminate\Support\Facades\DB::table('transactions')
+                ->where('contact_id', $contact->id)
+                ->where('type', 'sell_return')
+                ->where('status', 'final')
+                ->sum('final_total');
+                
+            $totalPayments = \Illuminate\Support\Facades\DB::table('transaction_payments')
+                ->join('transactions', 'transaction_payments.transaction_id', '=', 'transactions.id')
+                ->where('transactions.contact_id', $contact->id)
+                ->sum('transaction_payments.amount');
+
+            $openingBalance = $contact->opening_balance ?? 0;
+            $totalDue = ($totalSales + $openingBalance) - $totalPayments - $totalReturns;
+
+            $contact->total_sales = $totalSales;
+            $contact->total_due = $totalDue;
+            return $contact;
+        });
+
+        // We return the custom paginated structure
+        return response()->json([
+            'current_page' => $paginator->currentPage(),
+            'data' => $contacts,
+            'first_page_url' => $paginator->url(1),
+            'from' => $paginator->firstItem(),
+            'last_page' => $paginator->lastPage(),
+            'last_page_url' => $paginator->url($paginator->lastPage()),
+            'next_page_url' => $paginator->nextPageUrl(),
+            'path' => $paginator->path(),
+            'per_page' => $paginator->perPage(),
+            'prev_page_url' => $paginator->previousPageUrl(),
+            'to' => $paginator->lastItem(),
+            'total' => $paginator->total(),
+        ]);
     }
 
     /**
@@ -116,6 +161,11 @@ class ContactController extends Controller
      */
     public function destroy(Contact $contact)
     {
+        $transactionsCount = \Illuminate\Support\Facades\DB::table('transactions')->where('contact_id', $contact->id)->count();
+        if ($transactionsCount > 0) {
+            return response()->json(['message' => 'Cannot delete contact with associated transactions.'], 422);
+        }
+
         $contact->delete();
 
         return response()->json([

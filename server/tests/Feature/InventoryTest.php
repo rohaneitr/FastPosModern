@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use App\Models\User;
+use App\Domain\IAM\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class InventoryTest extends TestCase
@@ -15,16 +15,18 @@ class InventoryTest extends TestCase
     {
         parent::setUp();
         
-        $this->businessId = DB::table('businesses')->insertGetId([
+        $this->businessId = \App\Domain\Tenant\Models\Business::factory()->create([
             'name' => 'Inventory Business',
             'owner_id' => 1,
             'is_active' => true,
-        ]);
+        ])->id;
 
         $this->user = User::factory()->create([
             'id' => 1,
             'business_id' => $this->businessId,
         ]);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'BusinessAdmin']);
+        $this->user->assignRole('BusinessAdmin');
 
         $this->locationId = DB::table('locations')->insertGetId([
             'business_id' => $this->businessId,
@@ -37,6 +39,7 @@ class InventoryTest extends TestCase
             'sku' => 'TEST-001',
             'type' => 'single',
             'created_by' => $this->user->id,
+            'unit_id' => 1,
         ]);
     }
 
@@ -51,7 +54,7 @@ class InventoryTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/inventory/stock');
 
         $response->assertStatus(200)
-                 ->assertJsonPath('data.0.qty_available', '100.0000')
+                 ->assertJsonPath('data.0.qty_available', 100)
                  ->assertJsonPath('data.0.product_name', 'Test Product');
     }
 

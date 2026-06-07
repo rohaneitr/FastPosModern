@@ -49,6 +49,7 @@ class ExpenseController extends Controller
             ],
             'total_amount' => 'required|numeric|min:0.01',
             'expense_date' => 'required|date',
+            'payment_method' => 'required|string',
             'note' => 'nullable|string',
         ]);
 
@@ -61,6 +62,7 @@ class ExpenseController extends Controller
             'total_amount' => $validated['total_amount'],
             'expense_date' => Carbon::parse($validated['expense_date'])->format('Y-m-d H:i:s'),
             'note' => $validated['note'] ?? null,
+            'payment_method' => $validated['payment_method'],
             'payment_status' => 'paid', // simple default for now
             'created_at' => Carbon::now(),
             'updated_at' => Carbon::now(),
@@ -100,6 +102,7 @@ class ExpenseController extends Controller
             ],
             'total_amount' => 'required|numeric|min:0.01',
             'expense_date' => 'required|date',
+            'payment_method' => 'required|string',
             'note' => 'nullable|string',
         ]);
 
@@ -111,6 +114,7 @@ class ExpenseController extends Controller
                 'expense_category_id' => $validated['expense_category_id'] ?? null,
                 'total_amount' => $validated['total_amount'],
                 'expense_date' => Carbon::parse($validated['expense_date'])->format('Y-m-d H:i:s'),
+                'payment_method' => $validated['payment_method'],
                 'note' => $validated['note'] ?? null,
                 'updated_at' => Carbon::now(),
             ]);

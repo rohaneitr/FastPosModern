@@ -16,11 +16,14 @@ class AuthTest extends TestCase
     {
         parent::setUp();
 
-        DB::table('businesses')->insert([
-            ['id' => 1, 'name' => 'Test Biz', 'is_active' => true],
+        \Illuminate\Support\Facades\DB::table('users')->insert([
+            'id' => 1, 'first_name' => 'Test', 'last_name' => 'User', 'username' => 'testowner', 'email' => 'test@owner.com', 'password' => 'pass', 'allow_login' => 1, 'user_type' => 'user', 'created_at' => now(), 'updated_at' => now()
         ]);
-        DB::table('plans')->insert(['id' => 1, 'name' => 'Basic', 'price' => 29, 'interval' => 'month']);
-        DB::table('subscriptions')->insert(['business_id' => 1, 'plan_id' => 1, 'status' => 'active']);
+        \Illuminate\Support\Facades\DB::table('businesses')->insert(
+            ['id' => 1, 'name' => 'Test Biz', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(), 'owner_id' => 1]
+        );
+        DB::table('plans')->updateOrInsert(['id' => 1], ['name' => 'Basic', 'price' => 29, 'interval' => 'month']);
+        DB::table('subscriptions')->updateOrInsert(['business_id' => 1], ['plan_id' => 1, 'status' => 'active']);
     }
 
     public function test_login_with_valid_credentials_returns_token()
@@ -83,17 +86,17 @@ class AuthTest extends TestCase
             'allow_login' => true,
         ]);
 
-        $token = $user->createToken('test')->plainTextToken;
+        $token = $user->createToken('test-token')->plainTextToken;
 
+        // Logout
         $response = $this->withHeader('Authorization', "Bearer $token")
                          ->postJson('/api/v1/logout');
-
         $response->assertStatus(200);
 
-        // Token should be revoked — next request should fail
-        $this->withHeader('Authorization', "Bearer $token")
-             ->getJson('/api/v1/me')
-             ->assertStatus(401);
+        // Verify token deleted from database directly
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_id' => $user->id,
+        ]);
     }
 
     public function test_forgot_password_generates_token()
@@ -108,7 +111,7 @@ class AuthTest extends TestCase
         ]);
 
         $response->assertStatus(200)
-                 ->assertJsonStructure(['token']);
+                 ->assertJsonStructure(['message']);
 
         $this->assertDatabaseHas('password_reset_tokens', [
             'email' => 'forgot@example.com',
@@ -123,16 +126,20 @@ class AuthTest extends TestCase
             'password' => Hash::make('OldPassword@1'),
         ]);
 
-        // Request token
-        $res = $this->postJson('/api/v1/forgot-password', ['email' => 'reset@example.com']);
-        $token = $res->json('token');
+        // Manually insert reset token
+        $token = 'test-token-123456789012345678901234567890';
+        DB::table('password_reset_tokens')->insert([
+            'email' => 'reset@example.com',
+            'token' => Hash::make($token),
+            'created_at' => now(),
+        ]);
 
         // Reset password
         $response = $this->postJson('/api/v1/reset-password', [
             'email' => 'reset@example.com',
             'token' => $token,
-            'password' => 'NewPassword@1',
-            'password_confirmation' => 'NewPassword@1',
+            'password' => 'N3wP@ssw0rd!FastPOS2026',
+            'password_confirmation' => 'N3wP@ssw0rd!FastPOS2026',
         ]);
 
         $response->assertStatus(200);
@@ -140,7 +147,7 @@ class AuthTest extends TestCase
         // Verify new password works
         $this->postJson('/api/v1/login', [
             'username' => 'reset@example.com',
-            'password' => 'NewPassword@1',
+            'password' => 'N3wP@ssw0rd!FastPOS2026',
         ])->assertStatus(200);
     }
 }

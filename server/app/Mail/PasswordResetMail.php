@@ -12,13 +12,17 @@ class PasswordResetMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public string $resetToken;
     public string $resetUrl;
 
-    public function __construct(string $token)
+    /**
+     * @param string $token   The raw 64-char token (NOT the bcrypt hash)
+     * @param string $resetUrl Pre-built URL: /reset-password?token=...&email=...
+     */
+    public function __construct(string $token, string $resetUrl)
     {
-        $this->resetToken = $token;
-        $this->resetUrl = config('app.frontend_url', 'http://localhost:3000') . '/login?reset_token=' . $token;
+        // We do NOT store the raw token as a public property to avoid
+        // it being accidentally serialised into logs or job payloads.
+        $this->resetUrl = $resetUrl;
     }
 
     public function envelope(): Envelope

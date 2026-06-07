@@ -15,9 +15,34 @@ class SettingsController extends Controller
      */
     public function index(Request $request)
     {
-        $businessId = $request->user()->business_id;
+        $user = $request->user();
+        
+        if ($user->hasRole('SuperAdmin') && is_null($user->business_id)) {
+            $business = (object) Cache::store('redis')->get('global_system_settings', [
+                'name' => 'FastPos Modern Global',
+                'currency_code' => 'USD',
+                'time_zone' => 'UTC',
+                'language' => 'en',
+            ]);
+            return response()->json([
+                'business' => $business,
+                'locations' => [],
+                'tax_rates' => [],
+                'printers' => [],
+                'invoice_layouts' => []
+            ]);
+        }
+
+        $businessId = $user->business_id;
 
         $business = DB::table('businesses')->where('id', $businessId)->first();
+        
+        // Merge global overrides
+        $globalSettings = Cache::store('redis')->get('global_system_settings');
+        if ($globalSettings && isset($globalSettings['currency_code'])) {
+            $business->currency_code = $globalSettings['currency_code'];
+        }
+
         $locations = DB::table('locations')->where('business_id', $businessId)->get();
         $taxRates = DB::table('tax_rates')->where('business_id', $businessId)->get();
         $printers = DB::table('printers')->where('business_id', $businessId)->get();
@@ -48,11 +73,61 @@ class SettingsController extends Controller
             'currency_decimal_separator' => 'sometimes|string|max:1',
         ]);
 
+        $user = $request->user();
+
+        if ($user->hasRole('SuperAdmin') && is_null($user->business_id)) {
+            $currentSettings = Cache::store('redis')->get('global_system_settings', []);
+            $newSettings = array_merge($currentSettings, $validated);
+            Cache::store('redis')->forever('global_system_settings', $newSettings);
+            return response()->json(['message' => 'Global system settings updated successfully']);
+        }
+
         DB::table('businesses')
-            ->where('id', $request->user()->business_id)
+            ->where('id', $user->business_id)
             ->update($validated);
 
         return response()->json(['message' => 'Business settings updated successfully']);
+    }
+
+    /**
+     * Update Invoice and Barcode settings
+     */
+    public function updateInvoiceSettings(Request $request)
+    {
+        $validated = $request->validate([
+            'invoice_prefix' => 'nullable|string|max:20',
+            'invoice_footer_text' => 'nullable|string|max:1000',
+            'invoice_header_text' => 'nullable|string|max:1000',
+            'default_tax_rate' => 'nullable|numeric|min:0|max:100',
+            'barcode_symbology' => 'nullable|string|in:CODE128,EAN13,UPCA',
+            'show_logo' => 'nullable|boolean',
+            'show_address' => 'nullable|boolean',
+            'show_tax_number' => 'nullable|boolean',
+            'show_due_balance' => 'nullable|boolean',
+            'show_barcode' => 'nullable|boolean',
+            'paper_size' => 'nullable|string|in:80mm,a4',
+        ]);
+
+        $business = DB::table('businesses')->where('id', $request->user()->business_id)->first();
+        $settings = $business->settings ? json_decode($business->settings, true) : [];
+
+        $settings['invoice_prefix'] = $validated['invoice_prefix'] ?? 'INV-';
+        $settings['invoice_footer_text'] = $validated['invoice_footer_text'] ?? '';
+        $settings['invoice_header_text'] = $validated['invoice_header_text'] ?? '';
+        $settings['default_tax_rate'] = $validated['default_tax_rate'] ?? 0;
+        $settings['barcode_symbology'] = $validated['barcode_symbology'] ?? 'CODE128';
+        $settings['show_logo'] = $validated['show_logo'] ?? true;
+        $settings['show_address'] = $validated['show_address'] ?? true;
+        $settings['show_tax_number'] = $validated['show_tax_number'] ?? false;
+        $settings['show_due_balance'] = $validated['show_due_balance'] ?? true;
+        $settings['show_barcode'] = $validated['show_barcode'] ?? true;
+        $settings['paper_size'] = $validated['paper_size'] ?? '80mm';
+
+        DB::table('businesses')
+            ->where('id', $request->user()->business_id)
+            ->update(['settings' => json_encode($settings)]);
+
+        return response()->json(['message' => 'Invoice settings updated successfully', 'settings' => $settings]);
     }
 
     // ── Currency APIs ──
@@ -87,7 +162,7 @@ class SettingsController extends Controller
         try {
             // Rate limit the external API call (cache for 1 hour to prevent API exhaustion)
             $response = Cache::store('redis')->remember('api:open_exchange_rates', 3600, function() {
-                $res = Http::timeout(10)->get('https://open.er-api.com/v6/latest/USD');
+                $res = Http::timeout(10)->get('https://open.er-api.com/v6/latest/BDT');
                 if ($res->successful()) {
                     return $res->json();
                 }
@@ -104,7 +179,7 @@ class SettingsController extends Controller
                 foreach ($response['rates'] as $code => $rate) {
                     if (in_array($code, $supportedCodes)) {
                         DB::table('exchange_rates')->updateOrInsert(
-                            ['base_currency' => 'USD', 'target_currency' => $code],
+                            ['base_currency' => 'BDT', 'target_currency' => $code],
                             [
                                 'rate' => $rate,
                                 'source' => 'api',
@@ -233,5 +308,112 @@ class SettingsController extends Controller
             ]);
 
         return response()->json(['message' => 'Branding updated successfully', 'branding' => $validated]);
+    }
+
+    // ── Communication Settings ──
+    
+    public function testSmtpConnection(Request $request)
+    {
+        $validated = $request->validate([
+            'smtp_host' => 'required|string|max:255',
+            'smtp_port' => 'required|string|max:10',
+            'smtp_username' => 'required|string|max:255',
+            'smtp_password' => 'required|string|max:255',
+            'smtp_encryption' => 'nullable|string|max:50',
+            'smtp_from_address' => 'required|email|max:255',
+            'test_email' => 'required|email|max:255',
+        ]);
+
+        try {
+            $transport = (new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
+                $validated['smtp_host'],
+                (int) $validated['smtp_port'],
+                $validated['smtp_encryption'] === 'tls' || $validated['smtp_encryption'] === 'ssl'
+            ))
+            ->setUsername($validated['smtp_username'])
+            ->setPassword($validated['smtp_password']);
+
+            $mailer = new \Symfony\Component\Mailer\Mailer($transport);
+
+            $email = (new \Symfony\Component\Mime\Email())
+                ->from($validated['smtp_from_address'])
+                ->to($validated['test_email'])
+                ->subject('FastPOS - SMTP Test Successful')
+                ->text('Your SMTP configuration is working correctly.');
+
+            $mailer->send($email);
+
+            return response()->json(['message' => 'Test email sent successfully! Connection is valid.']);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'SMTP Connection failed: ' . $e->getMessage()], 400);
+        }
+    }
+
+    public function getCommunicationSettings(Request $request)
+    {
+        $business = DB::table('businesses')->where('id', $request->user()->business_id)->first();
+        $settings = $business->settings ? json_decode($business->settings, true) : [];
+        $commSettings = $business->communication_settings ? json_decode($business->communication_settings, true) : [];
+        
+        return response()->json([
+            // Legacy SMS/WA in settings
+            'sms_gateway_url' => $settings['sms_gateway_url'] ?? '',
+            'sms_api_key' => $settings['sms_api_key'] ?? '',
+            'sms_sender_id' => $settings['sms_sender_id'] ?? '',
+            'whatsapp_api_url' => $settings['whatsapp_api_url'] ?? '',
+            'whatsapp_token' => $settings['whatsapp_token'] ?? '',
+            // New SMTP in communication_settings
+            'smtp_host' => $commSettings['smtp_host'] ?? '',
+            'smtp_port' => $commSettings['smtp_port'] ?? '',
+            'smtp_username' => $commSettings['smtp_username'] ?? '',
+            'smtp_password' => $commSettings['smtp_password'] ?? '',
+            'smtp_encryption' => $commSettings['smtp_encryption'] ?? '',
+            'smtp_from_address' => $commSettings['smtp_from_address'] ?? '',
+        ]);
+    }
+
+    public function updateCommunicationSettings(Request $request)
+    {
+        $validated = $request->validate([
+            'sms_gateway_url' => 'nullable|string|max:500',
+            'sms_api_key' => 'nullable|string|max:255',
+            'sms_sender_id' => 'nullable|string|max:100',
+            'whatsapp_api_url' => 'nullable|string|max:500',
+            'whatsapp_token' => 'nullable|string|max:1000',
+            
+            'smtp_host' => 'nullable|string|max:255',
+            'smtp_port' => 'nullable|string|max:10',
+            'smtp_username' => 'nullable|string|max:255',
+            'smtp_password' => 'nullable|string|max:255',
+            'smtp_encryption' => 'nullable|string|max:50',
+            'smtp_from_address' => 'nullable|email|max:255',
+        ]);
+
+        $business = DB::table('businesses')->where('id', $request->user()->business_id)->first();
+        $settings = $business->settings ? json_decode($business->settings, true) : [];
+        $commSettings = $business->communication_settings ? json_decode($business->communication_settings, true) : [];
+        
+        $settings['sms_gateway_url'] = $validated['sms_gateway_url'] ?? '';
+        $settings['sms_api_key'] = $validated['sms_api_key'] ?? '';
+        $settings['sms_sender_id'] = $validated['sms_sender_id'] ?? '';
+        $settings['whatsapp_api_url'] = $validated['whatsapp_api_url'] ?? '';
+        $settings['whatsapp_token'] = $validated['whatsapp_token'] ?? '';
+        
+        $commSettings['smtp_host'] = $validated['smtp_host'] ?? '';
+        $commSettings['smtp_port'] = $validated['smtp_port'] ?? '';
+        $commSettings['smtp_username'] = $validated['smtp_username'] ?? '';
+        $commSettings['smtp_password'] = $validated['smtp_password'] ?? '';
+        $commSettings['smtp_encryption'] = $validated['smtp_encryption'] ?? '';
+        $commSettings['smtp_from_address'] = $validated['smtp_from_address'] ?? '';
+
+        DB::table('businesses')
+            ->where('id', $request->user()->business_id)
+            ->update([
+                'settings' => json_encode($settings), 
+                'communication_settings' => json_encode($commSettings),
+                'updated_at' => now()
+            ]);
+
+        return response()->json(['message' => 'Communication settings updated successfully']);
     }
 }

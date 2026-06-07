@@ -19,15 +19,17 @@ class CheckoutTest extends TestCase
     {
         parent::setUp();
 
-        DB::table('businesses')->insert(['id' => 1, 'name' => 'Shop', 'is_active' => true]);
+        \App\Domain\Tenant\Models\Business::factory()->create(['id' => 1, 'name' => 'Shop', 'is_active' => true]);
         DB::table('locations')->insert(['id' => 1, 'business_id' => 1, 'name' => 'Main']);
-        DB::table('plans')->insert(['id' => 1, 'name' => 'Basic', 'price' => 29, 'interval' => 'month']);
-        DB::table('subscriptions')->insert(['business_id' => 1, 'plan_id' => 1, 'status' => 'active']);
+        DB::table('plans')->updateOrInsert(['id' => 1], ['name' => 'Basic', 'price' => 29, 'interval' => 'month']);
+        DB::table('subscriptions')->updateOrInsert(['business_id' => 1], ['plan_id' => 1, 'status' => 'active']);
 
         $this->user = User::factory()->create(['business_id' => 1, 'allow_login' => true]);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'BusinessAdmin']);
+        $this->user->assignRole('BusinessAdmin');
 
         $this->productId = DB::table('products')->insertGetId([
-            'business_id' => 1, 'name' => 'Widget', 'type' => 'single', 'sku' => 'W-001', 'created_by' => $this->user->id,
+            'business_id' => 1, 'name' => 'Widget', 'type' => 'single', 'sku' => 'W-001', 'created_by' => $this->user->id, 'unit_id' => 1
         ]);
 
         DB::table('product_stocks')->insert([
@@ -71,7 +73,8 @@ class CheckoutTest extends TestCase
             ],
         ]);
 
-        $response->assertStatus(500); // Insufficient stock
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['inventory']); // Insufficient stock
         // Stock should remain unchanged
         $stock = DB::table('product_stocks')->where('product_id', $this->productId)->first();
         $this->assertEquals(50, $stock->qty_available);

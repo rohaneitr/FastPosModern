@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use Tests\TestCase;
-use App\Models\User;
+use App\Domain\IAM\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class CRMTest extends TestCase
@@ -17,16 +17,18 @@ class CRMTest extends TestCase
         parent::setUp();
 
         // Scaffold minimal required tenant data
-        $this->businessId = DB::table('businesses')->insertGetId([
+        $this->businessId = \App\Domain\Tenant\Models\Business::factory()->create([
             'name' => 'Test Business',
             'owner_id' => 1,
             'is_active' => true,
-        ]);
+        ])->id;
 
         $this->user = User::factory()->create([
             'id' => 1,
             'business_id' => $this->businessId,
         ]);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'BusinessAdmin']);
+        $this->user->assignRole('BusinessAdmin');
     }
 
     public function test_can_list_contacts()

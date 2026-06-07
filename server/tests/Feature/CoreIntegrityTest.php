@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use App\Models\User;
+use App\Domain\IAM\Models\User;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -17,9 +17,12 @@ class CoreIntegrityTest extends TestCase
         parent::setUp();
         
         // Seed basic dependencies manually for isolation
-        DB::table('businesses')->insert([
-            ['id' => 1, 'name' => 'Tenant A', 'is_active' => true],
-            ['id' => 2, 'name' => 'Tenant B', 'is_active' => true]
+        \Illuminate\Support\Facades\DB::table('users')->insert([
+            'id' => 1, 'first_name' => 'Test', 'last_name' => 'User', 'username' => 'testowner', 'email' => 'test@owner.com', 'password' => 'pass', 'allow_login' => 1, 'user_type' => 'user', 'created_at' => now(), 'updated_at' => now()
+        ]);
+        \Illuminate\Support\Facades\DB::table('businesses')->insert([
+            ['id' => 1, 'name' => 'Tenant A', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(), 'owner_id' => 1],
+            ['id' => 2, 'name' => 'Tenant B', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(), 'owner_id' => 1]
         ]);
 
         DB::table('locations')->insert([
@@ -28,20 +31,17 @@ class CoreIntegrityTest extends TestCase
         ]);
 
         // Default plans and subscriptions to bypass CheckSubscription middleware
-        DB::table('plans')->insert([
-            ['id' => 1, 'name' => 'Basic', 'price' => 29, 'interval' => 'month']
-        ]);
+        DB::table('plans')->updateOrInsert(['id' => 1], ['name' => 'Basic', 'price' => 29, 'interval' => 'month']);
         
-        DB::table('subscriptions')->insert([
-            ['business_id' => 1, 'plan_id' => 1, 'status' => 'active'],
-            ['business_id' => 2, 'plan_id' => 1, 'status' => 'active']
-        ]);
+        DB::table('subscriptions')->updateOrInsert(['business_id' => 1], ['plan_id' => 1, 'status' => 'active']);
+        DB::table('subscriptions')->updateOrInsert(['business_id' => 2], ['plan_id' => 1, 'status' => 'active']);
     }
 
     public function test_tenant_isolation_prevents_accessing_other_business_data()
     {
-        // Create user for Tenant A
         $userA = User::factory()->create(['business_id' => 1]);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'BusinessAdmin']);
+        $userA->assignRole('BusinessAdmin');
 
         // Create product in Tenant B
         $productId = DB::table('products')->insertGetId([
@@ -49,6 +49,7 @@ class CoreIntegrityTest extends TestCase
             'name' => 'Tenant B Product',
             'type' => 'single',
             'sku' => 'SKU-B',
+            'unit_id' => 1,
             'created_by' => $userA->id
         ]);
 
@@ -59,10 +60,12 @@ class CoreIntegrityTest extends TestCase
     public function test_offline_sync_push_idempotency_and_stock_deduction()
     {
         $user = User::factory()->create(['business_id' => 1]);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'BusinessAdmin']);
+        $user->assignRole('BusinessAdmin');
         
         // Setup product & stock for checkout
         $productId = DB::table('products')->insertGetId([
-            'business_id' => 1, 'name' => 'Test Product', 'type' => 'single', 'sku' => 'TEST-01', 'created_by' => $user->id
+            'business_id' => 1, 'name' => 'Test Product', 'type' => 'single', 'sku' => 'TEST-01', 'unit_id' => 1, 'created_by' => $user->id
         ]);
 
         DB::table('product_stocks')->insert([

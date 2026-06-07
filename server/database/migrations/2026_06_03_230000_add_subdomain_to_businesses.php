@@ -12,13 +12,16 @@ return new class extends Migration
             if (!Schema::hasColumn('businesses', 'subdomain')) {
                 $table->string('subdomain')->nullable()->unique()->after('name');
             }
+            if (!Schema::hasColumn('businesses', 'custom_domain')) {
+                $table->string('custom_domain')->nullable()->unique()->after('subdomain');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('businesses', function (Blueprint $table) {
-            $table->dropColumn('subdomain');
+            $table->dropColumn(['subdomain', 'custom_domain']);
         });
     }
 };

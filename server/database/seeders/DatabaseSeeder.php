@@ -27,8 +27,8 @@ class DatabaseSeeder extends Seeder
             'username' => 'superadmin',
             'first_name' => 'System',
             'last_name' => 'Owner',
-            'email' => 'superadmin@fastpos.com',
-            'password' => Hash::make('Secret@12'),
+            'email' => env('SUPER_ADMIN_EMAIL', 'superadmin@fastpos.com'),
+            'password' => Hash::make(env('SUPER_ADMIN_PASSWORD', 'Secret@12')),
             'user_type' => 'super_admin',
             'business_id' => null,
             'created_at' => $now,
@@ -52,6 +52,7 @@ class DatabaseSeeder extends Seeder
 
         $businessId = DB::table('businesses')->insertGetId([
             'name' => 'FastPos Demo Corp',
+            'subdomain' => 'tenant1',
             'owner_id' => $businessAdminId,
             'created_at' => $now,
             'updated_at' => $now,

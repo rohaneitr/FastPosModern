@@ -50,7 +50,11 @@ class AdvancedSalesController extends Controller
                 Rule::exists('transactions', 'id')->where('business_id', $businessId)
             ],
             'return_amount' => 'required|numeric|min:0',
+            'refund_method' => 'required|string|in:cash,advance',
             'lines' => 'required|array', // Array of product_id and qty to return
+            'lines.*.product_id' => 'required|integer',
+            'lines.*.quantity' => 'required|numeric|min:1',
+            'lines.*.serial_numbers' => 'nullable|array',
         ]);
 
         try {
@@ -98,6 +102,32 @@ class AdvancedSalesController extends Controller
                     ->where('product_id', $line['product_id'])
                     ->where('location_id', $original->location_id)
                     ->increment('qty_available', $line['quantity']);
+                    
+                // Phase 8: Revert serials
+                if (!empty($line['serial_numbers'])) {
+                    DB::table('product_serials')
+                        ->where('business_id', $businessId)
+                        ->where('product_id', $line['product_id'])
+                        ->whereIn('serial_number', $line['serial_numbers'])
+                        ->update([
+                            'status' => 'available',
+                            'transaction_id' => null,
+                            'updated_at' => now()
+                        ]);
+                }
+            }
+
+            // Phase 10: Refund Method (Cash or Advance Wallet)
+            if ($validated['refund_method'] === 'cash' && $validated['return_amount'] > 0) {
+                DB::table('transaction_payments')->insert([
+                    'transaction_id' => $returnTxId,
+                    'amount' => -$validated['return_amount'],
+                    'method' => 'cash',
+                    'paid_on' => now(),
+                    'created_by' => $request->user()->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
             }
 
             DB::commit();

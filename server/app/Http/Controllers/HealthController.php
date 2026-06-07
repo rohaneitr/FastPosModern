@@ -2,54 +2,35 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Redis;
 
 class HealthController extends Controller
 {
     /**
-     * Health check endpoint for uptime monitoring.
-     * Returns status of database, cache, and disk.
+     * Handle the incoming request.
      */
-    public function __invoke()
+    public function __invoke(Request $request)
     {
-        $checks = [];
-        $healthy = true;
-
-        // Database
         try {
-            DB::select('SELECT 1');
-            $checks['database'] = 'ok';
+            // Check DB
+            DB::connection()->getPdo();
+            
+            // Check Redis
+            Redis::connection()->ping();
+            
+            return response()->json([
+                'status' => 'OK',
+                'database' => 'connected',
+                'redis' => 'connected',
+                'timestamp' => now()
+            ], 200);
         } catch (\Exception $e) {
-            $checks['database'] = 'error: ' . $e->getMessage();
-            $healthy = false;
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => $e->getMessage()
+            ], 503);
         }
-
-        // Cache
-        try {
-            Cache::put('health_check', true, 10);
-            $checks['cache'] = Cache::get('health_check') ? 'ok' : 'error';
-        } catch (\Exception $e) {
-            $checks['cache'] = 'error: ' . $e->getMessage();
-            $healthy = false;
-        }
-
-        // Disk
-        $diskFree = disk_free_space(storage_path());
-        $checks['disk_free_mb'] = round($diskFree / 1024 / 1024, 1);
-        if ($diskFree < 100 * 1024 * 1024) { // < 100MB
-            $healthy = false;
-        }
-
-        $checks['timestamp'] = Carbon::now()->toIso8601String();
-        $checks['environment'] = app()->environment();
-        $checks['php_version'] = phpversion();
-        $checks['laravel_version'] = app()->version();
-
-        return response()->json([
-            'status' => $healthy ? 'healthy' : 'degraded',
-            'checks' => $checks,
-        ], $healthy ? 200 : 503);
     }
 }

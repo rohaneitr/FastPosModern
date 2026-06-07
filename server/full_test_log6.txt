@@ -1,0 +1,179 @@
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\ExampleTest[39m
+  [32;1m✓[39;22m[90m [39m[90mthat true is true[39m
+"{"current_page":1,"data":[{"id":1,"business_id":1,"location_id":null,"expense_category_id":null,"created_by":1,"reference_no":"EXP-001","expense_date":"2026-06-06 09:28:00","total_amount":300,"note":null,"payment_status":"due","deleted_at":null,"created_at":"2026-06-06 09:28:00","updated_at":"2026-06-06 09:28:00","payment_method":null,"category_name":null,"location_name":null}],"first_page_url":"http:\/\/localhost:8000\/api\/v1\/expenses?page=1","from":1,"last_page":1,"last_page_url":"http:\/\/localhost:8000\/api\/v1\/expenses?page=1","links":[{"url":null,"label":"&laquo; Previous","page":null,"active":false},{"url":"http:\/\/localhost:8000\/api\/v1\/expenses?page=1","label":"1","page":1,"active":true},{"url":null,"label":"Next &raquo;","page":null,"active":false}],"next_page_url":null,"path":"http:\/\/localhost:8000\/api\/v1\/expenses","per_page":20,"prev_page_url":null,"to":1,"total":1}" // tests/Feature/AccountingTest.php:67
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\AccountingTest[39m
+  [33;1m![39;22m[90m [39m[90mcan log expense[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env): Failed to[39m[90m… [39m [90m4.62s[39m  
+  [33;1m![39;22m[90m [39m[90mcan list expenses[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env): Failed t[39m[90m…[39m [90m0.04s[39m  
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\AuthTest[39m
+  [33;1m![39;22m[90m [39m[90mlogin with valid credentials returns token[39m[90m [39m[33m→ file_get_contents(/var[39m[90m…[39m [90m0.04s[39m  
+  [33;1m![39;22m[90m [39m[90mlogin with wrong password returns 422[39m[90m [39m[33m→ file_get_contents(/var/www/[39m[90m…[39m [90m0.03s[39m  
+  [33;1m![39;22m[90m [39m[90mdisabled user cannot login[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env):[39m[90m…[39m [90m0.04s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mlogout revokes token[39m[90m                                                [39m [90m0.04s[39m  
+  [33;1m![39;22m[90m [39m[90mforgot password generates token[39m[90m [39m[33m→ file_get_contents(/var/www/html/.[39m[90m…[39m [90m0.11s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mreset password with valid token[39m[90m                                     [39m [90m0.22s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\CRMTest[39m
+  [33;1m![39;22m[90m [39m[90mcan list contacts[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env): Failed t[39m[90m…[39m [90m0.04s[39m  
+  [33;1m![39;22m[90m [39m[90mcan create contact[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env): Failed[39m[90m… [39m [90m0.04s[39m  
+"{"message":"Sale processed successfully","transaction_id":1,"invoice_no":"INV-1780738080-989","subtotal":75,"discount":0,"tax":7.5,"final_total":82.5}" // tests/Feature/CheckoutTest.php:51
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\CheckoutTest[39m
+  [33;1m![39;22m[90m [39m[90mcheckout creates transaction and decrements stock[39m[90m [39m[33m→ file_get_conten[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcheckout rejects insufficient stock[39m[90m                                 [39m [90m0.05s[39m  
+  [33;1m![39;22m[90m [39m[90mcheckout with invalid location returns 422[39m[90m [39m[33m→ file_get_contents(/var[39m[90m…[39m [90m0.04s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\CoreIntegrityTest[39m
+  [33;1m![39;22m[90m [39m[90mtenant isolation prevents accessing other business data[39m[90m [39m[33m→ file_get_[39m[90m…[39m [90m0.04s[39m  
+  [33;1m![39;22m[90m [39m[90moffline sync push idempotency and stock deduction[39m[90m [39m[33m→ file_get_conten[39m[90m…[39m [90m0.04s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\ExampleTest[39m
+  [33;1m![39;22m[90m [39m[90mthe application returns a successful response[39m[90m [39m[33m→ file_get_contents(/[39m[90m…[39m [90m0.10s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\FinancialIntegrityTest[39m
+  [33;1m![39;22m[90m [39m[90mcheckout calculates discounts and taxes accurately[39m[90m [39m[33m→ file_get_conte[39m[90m…[39m [90m0.07s[39m  
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\HRTest[39m
+  [31;1m⨯[39;22m[90m [39m[90mcan list employees[39m[90m                                                  [39m [90m0.03s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcan list payrolls[39m[90m                                                   [39m [90m0.04s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\InventoryConcurrencyTest[39m
+  [33;1m![39;22m[90m [39m[90mcannot sell more stock than available[39m[90m [39m[33m→ file_get_contents(/var/www/[39m[90m…[39m [90m0.04s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\InventoryTest[39m
+  [33;1m![39;22m[90m [39m[90mcan list inventory stock[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env): F[39m[90m…[39m [90m0.04s[39m  
+  [33;1m![39;22m[90m [39m[90mcan adjust stock[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env): Failed to[39m[90m…[39m [90m0.04s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\RBACTest[39m
+  [33;1m![39;22m[90m [39m[90mbusiness admin can access hr routes[39m[90m [39m[33m→ file_get_contents(/var/www/ht[39m[90m…[39m [90m0.14s[39m  
+  [33;1m![39;22m[90m [39m[90mcashier cannot access hr routes[39m[90m [39m[33m→ file_get_contents(/var/www/html/.[39m[90m…[39m [90m0.11s[39m  
+  [33;1m![39;22m[90m [39m[90mcashier can access checkout[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env)[39m[90m…[39m [90m0.07s[39m  
+  [33;1m![39;22m[90m [39m[90mcashier cannot access inventory adjust[39m[90m [39m[33m→ file_get_contents(/var/www[39m[90m…[39m [90m0.08s[39m  
+  [33;1m![39;22m[90m [39m[90minventory manager can access stock[39m[90m [39m[33m→ file_get_contents(/var/www/htm[39m[90m…[39m [90m0.08s[39m  
+  [33;1m![39;22m[90m [39m[90minventory manager cannot access expenses[39m[90m [39m[33m→ file_get_contents(/var/w[39m[90m…[39m [90m0.17s[39m  
+  [33;1m![39;22m[90m [39m[90maccountant can access reports[39m[90m [39m[33m→ file_get_contents(/var/www/html/.en[39m[90m…[39m [90m0.14s[39m  
+  [33;1m![39;22m[90m [39m[90maccountant cannot access products[39m[90m [39m[33m→ file_get_contents(/var/www/html[39m[90m…[39m [90m0.08s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\ReportingTest[39m
+  [33;1m![39;22m[90m [39m[90mprofit loss calculation[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env): Fa[39m[90m…[39m [90m0.04s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\SubscriptionMiddlewareTest[39m
+  [33;1m![39;22m[90m [39m[90mactive subscription allows access[39m[90m [39m[33m→ file_get_contents(/var/www/html[39m[90m…[39m [90m0.04s[39m  
+  [33;1m![39;22m[90m [39m[90mcancelled subscription returns 402[39m[90m [39m[33m→ file_get_contents(/var/www/htm[39m[90m…[39m [90m0.03s[39m  
+  [33;1m![39;22m[90m [39m[90msuspended business returns 403[39m[90m [39m[33m→ file_get_contents(/var/www/html/.e[39m[90m…[39m [90m0.03s[39m  
+  [33;1m![39;22m[90m [39m[90mno subscription returns 402[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env)[39m[90m…[39m [90m0.03s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\SuperadminTest[39m
+  [33;1m![39;22m[90m [39m[90mcan list businesses[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env): Failed[39m[90m…[39m [90m0.16s[39m  
+  [33;1m![39;22m[90m [39m[90mcan toggle business status[39m[90m [39m[33m→ file_get_contents(/var/www/html/.env):[39m[90m…[39m [90m0.13s[39m  
+
+  [30;43;1m WARN [39;49;22m[39m Tests\Feature\TenantIsolationTest[39m
+  [33;1m![39;22m[90m [39m[90mtenant cannot access other tenant product[39m[90m [39m[33m→ file_get_contents(/var/[39m[90m…[39m [90m0.05s[39m  
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\AuthTest[22m [90m>[39m logout revokes token                        
+[39;1m  Expected response status code [401] but received 200.
+Failed asserting that 200 is identical to 401.[39;22m
+
+  at [32mtests/Feature/AuthTest.php[39m:[32m106[39m
+    102▕ 
+    103▕         // Token should be revoked — next request should fail
+    104▕         $this->withHeader('Authorization', "Bearer $token")
+    105▕              ->getJson('/api/v1/me')
+  ➜ 106▕              ->assertStatus(401);
+    107▕     }
+    108▕ 
+    109▕     public function test_forgot_password_generates_token()
+    110▕     {
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\AuthTest[22m [90m>[39m reset password with valid token             
+[39;1m  Expected response status code [200] but received 422.
+Failed asserting that 422 is identical to 200.
+
+The following errors occurred during the last request:
+
+{
+    "message": "The given password has appeared in a data leak. Please choose a different password.",
+    "errors": {
+        "password": [
+            "The given password has appeared in a data leak. Please choose a different password."
+        ]
+    }
+}[39;22m
+
+  at [32mtests/Feature/AuthTest.php[39m:[32m152[39m
+    148▕             'password' => 'NewPassword@1',
+    149▕             'password_confirmation' => 'NewPassword@1',
+    150▕         ]);
+    151▕ 
+  ➜ 152▕         $response->assertStatus(200);
+    153▕ 
+    154▕         // Verify new password works
+    155▕         $this->postJson('/api/v1/login', [
+    156▕             'username' => 'reset@example.com',
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\CheckoutTest[22m [90m>[39m checkout rejects insufficient stock     
+[39;1m  Expected response status code [500] but received 422.
+Failed asserting that 422 is identical to 500.
+
+The following errors occurred during the last request:
+
+{
+    "message": "Insufficient stock available for the requested product.",
+    "errors": {
+        "inventory": [
+            "Insufficient stock available for the requested product."
+        ]
+    }
+}[39;22m
+
+  at [32mtests/Feature/CheckoutTest.php[39m:[32m77[39m
+     73▕                 ['product_id' => $this->productId, 'quantity' => 999, 'price' => 10],
+     74▕             ],
+     75▕         ]);
+     76▕ 
+  ➜  77▕         $response->assertStatus(500); // Insufficient stock
+     78▕         // Stock should remain unchanged
+     79▕         $stock = DB::table('product_stocks')->where('product_id', $this->productId)->first();
+     80▕         $this->assertEquals(50, $stock->qty_available);
+     81▕     }
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\HRTest[22m [90m>[39m can list employees                            
+[39;1m  Expected response status code [200] but received 403.
+Failed asserting that 403 is identical to 200.[39;22m
+
+  at [32mtests/Feature/HRTest.php[39m:[32m56[39m
+     52▕         ]);
+     53▕ 
+     54▕         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/hr/employees');
+     55▕ 
+  ➜  56▕         $response->assertStatus(200)
+     57▕                  ->assertJsonPath('0.first_name', 'Jane')
+     58▕                  ->assertJsonPath('0.employee_profile.designation', 'Sales');
+     59▕     }
+     60▕
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\HRTest[22m [90m>[39m can list payrolls                             
+[39;1m  Expected response status code [200] but received 403.
+Failed asserting that 403 is identical to 200.[39;22m
+
+  at [32mtests/Feature/HRTest.php[39m:[32m89[39m
+     85▕         ]);
+     86▕ 
+     87▕         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/hr/payrolls');
+     88▕ 
+  ➜  89▕         $response->assertStatus(200)
+     90▕                  ->assertJsonPath('0.month', '2026-05')
+     91▕                  ->assertJsonPath('0.base_salary', 5000)
+     92▕                  ->assertJsonPath('0.net_salary', 4500);
+     93▕     }
+
+
+  [90mTests:[39m    [31;1m5 failed[39;22m[90m,[39m[39m [39m[33;1m33 warnings[39;22m[90m,[39m[39m [39m[32;1m1 passed[39;22m[90m (78 assertions)[39m
+  [90mDuration:[39m [39m7.36s[39m
+

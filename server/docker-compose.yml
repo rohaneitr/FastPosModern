@@ -23,11 +23,27 @@ services:
       SANCTUM_STATEFUL_DOMAINS: "localhost:3000,127.0.0.1:3000"
       SESSION_DRIVER: database
       SESSION_LIFETIME: "120"
-      SESSION_DOMAIN: localhost
-      CACHE_STORE: database
-      QUEUE_CONNECTION: database
+      SESSION_DOMAIN: "null"
+      SESSION_SECURE_COOKIE: "false"
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      REDIS_HOST: redis
+      REDIS_CLIENT: predis
       LOG_CHANNEL: stack
       LOG_LEVEL: debug
+      LICENSE_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg9PJbuI+pbljRNMTy\\nvzomd/GnsLKEkQI3S/ySchgT7YahRANCAAQDHEsDeZHOLDIEEAWnEsjF+F76QFgP\\nwWBxvW9G36UqaZqLO9X/aGjbGpYCHdT3HbCCGORIAfufy1A85Ud7nEJ6\\n-----END PRIVATE KEY-----"
+      LICENSE_PUBLIC_KEY: "-----BEGIN PUBLIC KEY-----\\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAxxLA3mRziwyBBAFpxLIxfhe+kBY\\nD8Fgcb1vRt+lKmmaizvV/2ho2xqWAh3U9x2wghjkSAH7n8tQPOVHe5xCeg==\\n-----END PUBLIC KEY-----"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: fastpos_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
     restart: unless-stopped
 
   frontend:
@@ -35,6 +51,8 @@ services:
     container_name: fastpos_frontend
     volumes:
       - ../client:/app
+      - /app/node_modules
+      - /app/.next
     working_dir: /app
     ports:
       - "3000:3000"
@@ -48,3 +66,4 @@ services:
 
 volumes:
   sqlite_data:
+  redis_data:

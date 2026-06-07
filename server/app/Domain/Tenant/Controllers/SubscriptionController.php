@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Domain\Tenant\Models\Plan;
 use App\Domain\Tenant\Models\Subscription;
+use App\Domain\Tenant\Models\SubscriptionRequest;
 use App\Domain\Tenant\Models\Business;
+use App\Domain\Tenant\Actions\ProvisionSubscriptionAction;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -24,19 +26,98 @@ class SubscriptionController extends Controller
     /**
      * SuperAdmin: Create a new plan
      */
-    public function storePlan(Request $request)
-    {
+    public function storePlan(Request $request) {
         $validated = $request->validate([
             'name' => 'required|string|max:100',
             'price' => 'required|numeric|min:0',
-            'interval' => 'required|in:month,year',
-            'max_users' => 'required|integer|min:1',
-            'max_locations' => 'required|integer|min:1',
-            'stripe_price_id' => 'nullable|string'
+            'interval' => 'nullable|string',
+            'max_users' => 'nullable|integer',
+            'max_locations' => 'nullable|integer',
+            'plan_type' => 'nullable|string',
+            'plan_architecture' => 'nullable|string',
+            'device_limit' => 'nullable|integer',
+            'employee_limit' => 'nullable|integer',
+            'enabled_modules' => 'nullable|array',
+            'features' => 'nullable|array',
         ]);
 
-        $plan = Plan::create($validated);
-        return response()->json(['message' => 'Plan created', 'plan' => $plan], 201);
+        try {
+            // Disable all Observers/Events temporarily to prevent background crashes
+            $plan = Plan::withoutEvents(function () use ($validated, $request) {
+                $newPlan = new Plan();
+                $newPlan->name = $validated['name'];
+                $newPlan->price = $validated['price'];
+                $newPlan->interval = $validated['interval'] ?? 'month';
+                $newPlan->max_users = $validated['max_users'] ?? $validated['employee_limit'] ?? 1;
+                $newPlan->max_locations = $validated['max_locations'] ?? 1;
+                $newPlan->plan_type = $validated['plan_type'] ?? $validated['plan_architecture'] ?? 'online_web';
+                $newPlan->device_limit = $validated['device_limit'] ?? 1;
+                $newPlan->employee_limit = $validated['employee_limit'] ?? 1;
+                
+                // Force clean array explicitly, preventing any object serialization
+                $newPlan->enabled_modules = is_array($request->enabled_modules) ? $request->enabled_modules : [];
+                $newPlan->features = is_array($request->features) ? $request->features : [];
+                $newPlan->save();
+
+                return $newPlan;
+            });
+
+            return response()->json(['message' => 'Plan created safely', 'plan' => $plan], 201);
+
+        } catch (\Throwable $e) {
+            // The TRAP: If it still crashes, log the exact file and stack trace
+            \Illuminate\Support\Facades\Log::emergency('PLAN_CRASH_TRACE', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['message' => 'System Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function updatePlan(Request $request, $id)
+    {
+        $plan = Plan::findOrFail($id);
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:100',
+            'price' => 'sometimes|required|numeric|min:0',
+            'interval' => 'nullable|in:month,year',
+            'max_users' => 'nullable|integer|min:1',
+            'max_locations' => 'nullable|integer|min:1',
+            'plan_type' => 'sometimes|required|string|in:online_web,hybrid_offline_sync,mobile_native',
+            'device_limit' => 'sometimes|required|integer|min:1',
+            'employee_limit' => 'sometimes|required|integer|min:1',
+            'stripe_price_id' => 'nullable|string',
+            'is_active' => 'nullable|boolean',
+            'features' => 'nullable|array',
+            'features.*' => 'string',
+            'enabled_modules' => 'nullable|array',
+            'enabled_modules.*' => 'string'
+        ]);
+
+        if (isset($validated['employee_limit']) && !isset($validated['max_users'])) {
+            $validated['max_users'] = $validated['employee_limit'];
+        }
+
+        $planData = $validated;
+        $planData['enabled_modules'] = $request->enabled_modules ?? [];
+
+        $plan->update($planData);
+        return response()->json(['message' => 'Plan updated successfully', 'plan' => $plan]);
+    }
+
+    public function destroyPlan($id)
+    {
+        $plan = Plan::findOrFail($id);
+        
+        $activeSubscriptions = Subscription::where('plan_id', $id)->where('status', 'active')->count();
+        if ($activeSubscriptions > 0) {
+            return response()->json(['message' => 'Cannot delete plan because active tenants are subscribed to it.'], 422);
+        }
+
+        $plan->delete();
+        return response()->json(['message' => 'Plan deleted successfully']);
     }
 
     /**
@@ -170,61 +251,21 @@ class SubscriptionController extends Controller
                 return response('Invalid signature', 400);
             }
         } else {
-            $event = json_decode($payload);
+            $event = json_decode($payload, true);
         }
 
         $type = is_object($event) && isset($event->type) ? $event->type : ($event['type'] ?? null);
-        $data = is_object($event) && isset($event->data) ? $event->data->object : ($event['data']['object'] ?? null);
-
-        switch ($type) {
-            case 'invoice.payment_succeeded':
-                $this->handlePaymentSucceeded($data);
-                break;
-            case 'invoice.payment_failed':
-                $this->handlePaymentFailed($data);
-                break;
-            case 'customer.subscription.deleted':
-                $this->handleSubscriptionCancelled($data);
-                break;
+        
+        $data = [];
+        if (is_object($event) && isset($event->data)) {
+            $data = is_object($event->data->object) ? (array) $event->data->object : $event->data->object;
+        } elseif (is_array($event) && isset($event['data']['object'])) {
+            $data = $event['data']['object'];
         }
 
+        \App\Jobs\ProcessStripeWebhookJob::dispatch($type, (array)$data);
+
         return response()->json(['received' => true]);
-    }
-
-    private function handlePaymentSucceeded($invoice)
-    {
-        $subId = $invoice->subscription ?? ($invoice['subscription'] ?? null);
-        if (!$subId) return;
-
-        Subscription::where('stripe_subscription_id', $subId)->update([
-            'status' => 'active',
-        ]);
-
-        Log::info("Stripe: Payment succeeded for subscription {$subId}");
-    }
-
-    private function handlePaymentFailed($invoice)
-    {
-        $subId = $invoice->subscription ?? ($invoice['subscription'] ?? null);
-        if (!$subId) return;
-
-        Subscription::where('stripe_subscription_id', $subId)->update([
-            'status' => 'past_due',
-        ]);
-
-        Log::warning("Stripe: Payment failed for subscription {$subId}");
-    }
-
-    private function handleSubscriptionCancelled($subscription)
-    {
-        $subId = $subscription->id ?? ($subscription['id'] ?? null);
-        if (!$subId) return;
-
-        Subscription::where('stripe_subscription_id', $subId)->update([
-            'status' => 'cancelled',
-        ]);
-
-        Log::info("Stripe: Subscription cancelled {$subId}");
     }
 
     /**
@@ -249,5 +290,134 @@ class SubscriptionController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => 'Failed to create portal session', 'error' => $e->getMessage()], 500);
         }
+    }
+
+    public function manualAssign(Request $request)
+    {
+        if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403); }
+        $request->validate([
+            'tenant_id' => 'required|exists:businesses,id',
+            'plan_id' => 'required|exists:plans,id',
+            'custom_expiry_date' => 'nullable|date'
+        ]);
+
+        $plan = Plan::findOrFail($request->plan_id);
+        $customExpiryDate = $request->custom_expiry_date ? Carbon::parse($request->custom_expiry_date) : null;
+
+        $provisionAction = new ProvisionSubscriptionAction();
+        $result = $provisionAction->execute($request->tenant_id, $plan, $customExpiryDate);
+
+        return response()->json([
+            'message' => 'Subscription manually assigned',
+            'subscription' => $result['subscription'],
+            'license_key' => $result['license_key']
+        ]);
+    }
+
+    /**
+     * Tenant: Request a subscription (Offline / Manual Approval)
+     */
+    public function requestSubscription(Request $request)
+    {
+        $business = Business::findOrFail($request->user()->business_id);
+        
+        $validated = $request->validate([
+            'plan_id' => 'required|exists:plans,id',
+            'payment_method' => 'required|string',
+            'transaction_reference' => 'nullable|string',
+            'notes' => 'nullable|string'
+        ]);
+
+        // Check if there is already a pending request for this business
+        $existing = SubscriptionRequest::where('business_id', $business->id)
+                                       ->where('status', 'pending')
+                                       ->first();
+        if ($existing) {
+            return response()->json(['message' => 'You already have a pending subscription request. Please wait for approval.'], 422);
+        }
+
+        $subReq = SubscriptionRequest::create([
+            'business_id' => $business->id,
+            'plan_id' => $validated['plan_id'],
+            'status' => 'pending',
+            'payment_method' => $validated['payment_method'],
+            'transaction_reference' => $validated['transaction_reference'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        return response()->json(['message' => 'Subscription request submitted successfully', 'request' => $subReq], 201);
+    }
+
+    /**
+     * SuperAdmin: Get Subscription Requests
+     */
+    public function getSubscriptionRequests(Request $request)
+    {
+        if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403); }
+
+        $query = SubscriptionRequest::with(['business', 'plan', 'reviewer'])
+            ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
+            ->orderBy('created_at', 'desc');
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        return response()->json($query->paginate(20));
+    }
+
+    /**
+     * SuperAdmin: Approve Subscription Request
+     */
+    public function approveSubscriptionRequest(Request $request, $id)
+    {
+        if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403); }
+
+        $subReq = SubscriptionRequest::findOrFail($id);
+
+        if ($subReq->status !== 'pending') {
+            return response()->json(['message' => 'Request is already ' . $subReq->status], 422);
+        }
+
+        $plan = Plan::findOrFail($subReq->plan_id);
+
+        // Provision the subscription
+        $provisionAction = new ProvisionSubscriptionAction();
+        $result = $provisionAction->execute($subReq->business_id, $plan);
+
+        // Update request status
+        $subReq->update([
+            'status' => 'approved',
+            'reviewed_by' => $request->user()->id,
+            'reviewed_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Subscription request approved successfully',
+            'subscription' => $result['subscription']
+        ]);
+    }
+
+    /**
+     * SuperAdmin: Reject Subscription Request
+     */
+    public function rejectSubscriptionRequest(Request $request, $id)
+    {
+        if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403); }
+
+        $subReq = SubscriptionRequest::findOrFail($id);
+
+        if ($subReq->status !== 'pending') {
+            return response()->json(['message' => 'Request is already ' . $subReq->status], 422);
+        }
+
+        $subReq->update([
+            'status' => 'rejected',
+            'reviewed_by' => $request->user()->id,
+            'reviewed_at' => now(),
+            'notes' => $request->notes ?? $subReq->notes
+        ]);
+
+        return response()->json(['message' => 'Subscription request rejected successfully']);
     }
 }

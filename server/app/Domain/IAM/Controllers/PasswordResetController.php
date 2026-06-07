@@ -9,86 +9,136 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Mail\Message;
 
 class PasswordResetController extends Controller
 {
-    /**
-     * Request a password reset token.
-     * In a production app this would send an email. For now,
-     * it returns the token directly (suitable for SPA/mobile flows).
-     */
     public function sendResetLink(Request $request)
     {
         $request->validate([
-            'email' => 'required|email|exists:users,email',
+            'email' => 'required|email|max:255',
         ]);
 
-        $token = Str::random(64);
+        $email = strtolower(trim($request->email));
+        $userExists = DB::table('users')->where('email', $email)->exists();
 
-        // Delete any existing reset tokens for this email
-        DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+        if ($userExists) {
+            $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
-        DB::table('password_reset_tokens')->insert([
-            'email' => $request->email,
-            'token' => Hash::make($token),
-            'created_at' => Carbon::now(),
-        ]);
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
 
-        // Send email notification
-        try {
-            \Illuminate\Support\Facades\Mail::to($request->email)
-                ->send(new \App\Mail\PasswordResetMail($token));
-        } catch (\Exception $e) {
-            // Silently fail in dev if no mail driver configured
-            \Illuminate\Support\Facades\Log::warning('Password reset email failed: ' . $e->getMessage());
+            DB::table('password_reset_tokens')->insert([
+                'email'      => $email,
+                'token'      => Hash::make($otp),
+                'created_at' => Carbon::now(),
+            ]);
+
+            try {
+                Mail::raw("Your password reset OTP is: {$otp}. It expires in 15 minutes.", function (Message $message) use ($email) {
+                    $message->to($email)
+                            ->subject('Password Reset OTP');
+                });
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('Password reset email failed: ' . $e->getMessage());
+            }
         }
 
         return response()->json([
-            'message' => 'Password reset instructions have been sent to your email.',
-            'token' => app()->isLocal() ? $token : null, // Only expose token in local/dev
+            'message' => 'If that email address is registered, you will receive a password reset OTP shortly.',
         ]);
     }
 
-    /**
-     * Reset password using the token.
-     */
+    public function verifyOtp(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|max:255',
+            'otp'   => 'required|string|size:6',
+        ]);
+
+        $email = strtolower(trim($request->email));
+
+        $record = DB::table('password_reset_tokens')
+            ->where('email', $email)
+            ->first();
+
+        if (!$record || !Hash::check($request->otp, $record->token)) {
+            return response()->json([
+                'message' => 'This OTP is invalid.',
+            ], 422);
+        }
+
+        if (Carbon::parse($record->created_at)->addMinutes(15)->isPast()) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            return response()->json([
+                'message' => 'This OTP has expired. Please request a new one.',
+            ], 422);
+        }
+
+        $tempToken = Str::random(64);
+        
+        DB::table('password_reset_tokens')
+            ->where('email', $email)
+            ->update([
+                'token' => Hash::make($tempToken),
+                'created_at' => Carbon::now(),
+            ]);
+
+        return response()->json([
+            'message' => 'OTP verified successfully.',
+            'temp_token' => $tempToken,
+        ]);
+    }
+
     public function resetPassword(Request $request)
     {
         $request->validate([
-            'email' => 'required|email|exists:users,email',
-            'token' => 'required|string',
-            'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
+            'email'                 => 'required|email|max:255',
+            'token'                 => 'required|string|min:64',
+            'password'              => ['required', 'confirmed', Password::defaults()],
         ]);
 
+        $email = strtolower(trim($request->email));
+
         $record = DB::table('password_reset_tokens')
-            ->where('email', $request->email)
+            ->where('email', $email)
             ->first();
 
-        if (!$record) {
-            return response()->json(['message' => 'No reset token found for this email.'], 422);
+        if (!$record || !Hash::check($request->token, $record->token)) {
+            return response()->json([
+                'message' => 'This temporary token is invalid or has already been used.',
+            ], 422);
         }
 
-        // Check token expiry (1 hour)
-        if (Carbon::parse($record->created_at)->addHour()->isPast()) {
-            DB::table('password_reset_tokens')->where('email', $request->email)->delete();
-            return response()->json(['message' => 'Reset token has expired. Please request a new one.'], 422);
+        if (Carbon::parse($record->created_at)->addMinutes(15)->isPast()) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            return response()->json([
+                'message' => 'This temporary token has expired. Please start over.',
+            ], 422);
         }
 
-        if (!Hash::check($request->token, $record->token)) {
-            return response()->json(['message' => 'Invalid reset token.'], 422);
-        }
+        DB::transaction(function () use ($email, $request) {
+            $user = DB::table('users')->where('email', $email)->first();
 
-        // Update the user's password
-        DB::table('users')
-            ->where('email', $request->email)
-            ->update([
-                'password' => Hash::make($request->password),
-                'updated_at' => Carbon::now(),
-            ]);
+            DB::table('users')
+                ->where('email', $email)
+                ->update([
+                    'password'   => Hash::make($request->password),
+                    'updated_at' => Carbon::now(),
+                ]);
 
-        // Clean up the token
-        DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+            if ($user) {
+                DB::table('personal_access_tokens')
+                    ->where('tokenable_id', $user->id)
+                    ->where('tokenable_type', \App\Domain\IAM\Models\User::class)
+                    ->delete();
+            }
 
-        return response()->json(['message' => 'Password has been reset successfully. You can now log in.']);
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+        });
+
+        return response()->json([
+            'message' => 'Your password has been reset successfully. Please sign in with your new password.',
+        ]);
     }
 }

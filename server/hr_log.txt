@@ -1,0 +1,44 @@
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\HRTest[39m
+  [31;1m⨯[39;22m[90m [39m[90mcan list employees[39m[90m                                                  [39m [90m4.73s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcan list payrolls[39m[90m                                                   [39m [90m0.02s[39m  
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\HRTest[22m [90m>[39m can list employees          [41;1m QueryException [49;22m  
+[39;1m  SQLSTATE[HY000]: General error: 1 no such table: employees (Connection: sqlite, Database: /var/db/database.sqlite, SQL: insert into "employees" ("business_id", "employee_id", "first_name", "last_name", "department", "is_active", "created_at", "updated_at") values (1, EMP-100, Jane, Smith, Sales, 1, 2026-06-06 09:26:17, 2026-06-06 09:26:17))[39;22m
+
+  at [32mvendor/laravel/framework/src/Illuminate/Database/Connection.php[39m:[32m841[39m
+    837▕             $exceptionType = ($isUniqueConstraintError = $this->isUniqueConstraintError($e))
+    838▕                 ? UniqueConstraintViolationException::class
+    839▕                 : QueryException::class;
+    840▕ 
+  ➜ 841▕             $exception = new $exceptionType(
+    842▕                 $this->getNameWithReadWriteType(),
+    843▕                 $query,
+    844▕                 $this->prepareBindings($bindings),
+    845▕                 $e,
+
+      [2m+8 vendor frames [22m
+  [33m9   [39m[39;1mtests/Feature/HRTest.php[39;22m:[39;1m33[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\HRTest[22m [90m>[39m can list payrolls           [41;1m QueryException [49;22m  
+[39;1m  SQLSTATE[HY000]: General error: 1 no such table: employees (Connection: sqlite, Database: /var/db/database.sqlite, SQL: insert into "employees" ("business_id", "first_name", "last_name", "created_at", "updated_at") values (1, Jane, Smith, 2026-06-06 09:26:17, 2026-06-06 09:26:17))[39;22m
+
+  at [32mvendor/laravel/framework/src/Illuminate/Database/Connection.php[39m:[32m841[39m
+    837▕             $exceptionType = ($isUniqueConstraintError = $this->isUniqueConstraintError($e))
+    838▕                 ? UniqueConstraintViolationException::class
+    839▕                 : QueryException::class;
+    840▕ 
+  ➜ 841▕             $exception = new $exceptionType(
+    842▕                 $this->getNameWithReadWriteType(),
+    843▕                 $query,
+    844▕                 $this->prepareBindings($bindings),
+    845▕                 $e,
+
+      [2m+9 vendor frames [22m
+  [33m10  [39m[39;1mtests/Feature/HRTest.php[39;22m:[39;1m53[39;22m
+
+
+  [90mTests:[39m    [31;1m2 failed[39;22m[90m (0 assertions)[39m
+  [90mDuration:[39m [39m4.90s[39m
+

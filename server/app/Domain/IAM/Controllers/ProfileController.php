@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Facades\Storage;
 
 class ProfileController extends Controller
 {
@@ -18,6 +19,7 @@ class ProfileController extends Controller
 
     public function updateProfile(Request $request)
     {
+        // ... (preserving original for compatibility if needed, but we will add the new POST /update method)
         $user = $request->user();
         
         $validated = $request->validate([
@@ -105,10 +107,48 @@ class ProfileController extends Controller
             'language' => 'nullable|string|in:en,bn',
             'preferences' => 'nullable|array',
             'two_factor_enabled' => 'nullable|boolean',
+            'preferred_currency' => 'nullable|string|size:3',
         ]);
         
         $user->update($validated);
         
         return response()->json(['message' => 'Preferences updated successfully']);
+    }
+
+    public function update(Request $request)
+    {
+        $user = $request->user();
+
+        $request->validate([
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'nullable|string|max:255',
+            'theme_preference' => 'nullable|string|in:light,dark,system',
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg,webp,svg|max:2048',
+        ]);
+
+        $updateData = [
+            'first_name' => $request->first_name,
+            'theme_preference' => $request->theme_preference ?? 'system',
+        ];
+
+        if ($request->has('last_name')) {
+            $updateData['last_name'] = $request->last_name;
+        }
+
+        if ($request->hasFile('avatar')) {
+            // Delete old avatar if exists
+            if ($user->avatar) {
+                Storage::disk('public')->delete($user->avatar);
+            }
+            $path = $request->file('avatar')->store('uploads/avatars', 'public');
+            $updateData['avatar'] = $path;
+        }
+
+        $user->update($updateData);
+
+        return response()->json([
+            'message' => 'Profile updated successfully',
+            'user' => $user->fresh()
+        ]);
     }
 }

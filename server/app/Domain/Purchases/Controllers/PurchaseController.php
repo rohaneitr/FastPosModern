@@ -17,7 +17,7 @@ class PurchaseController extends Controller
     public function index(Request $request)
     {
         $purchases = DB::table('transactions')
-            ->where('business_id', $request->user()->business_id)
+            ->tenant()
             ->where('type', 'purchase')
             ->orderBy('transaction_date', 'desc')
             ->paginate(20);
@@ -49,7 +49,8 @@ class PurchaseController extends Controller
             ],
             'items.*.quantity' => 'required|numeric|min:0.01',
             'items.*.purchase_price' => 'required|numeric|min:0',
-            'payment_method' => 'nullable|string|in:cash,card,bank_transfer',
+            'items.*.serial_numbers' => 'nullable|string',
+            'payment_method' => 'nullable|string|in:cash,card,bank_transfer,bkash,sslcommerz',
             'amount_paid' => 'nullable|numeric|min:0'
         ]);
 
@@ -118,6 +119,30 @@ class PurchaseController extends Controller
                         ]);
                     }
                 }
+
+                // Process Serial Numbers
+                if (!empty($item['serial_numbers'])) {
+                    $serials = array_map('trim', explode(',', $item['serial_numbers']));
+                    $serials = array_filter($serials);
+                    
+                    if (count($serials) !== (int)$item['quantity']) {
+                        throw new \Exception('Number of serials provided (' . count($serials) . ') does not match expected quantity (' . $item['quantity'] . ') for product ID ' . $item['product_id']);
+                    }
+                    
+                    $serialRecords = [];
+                    foreach ($serials as $sn) {
+                        $serialRecords[] = [
+                            'business_id' => $request->user()->business_id,
+                            'product_id' => $item['product_id'],
+                            'serial_number' => $sn,
+                            'status' => 'available',
+                            'purchase_id' => $transactionId,
+                            'created_at' => Carbon::now(),
+                            'updated_at' => Carbon::now()
+                        ];
+                    }
+                    DB::table('product_serials')->insert($serialRecords);
+                }
             }
             DB::table('transaction_lines')->insert($lines);
 
@@ -145,5 +170,126 @@ class PurchaseController extends Controller
             DB::rollBack();
             return response()->json(['message' => 'Purchase creation failed', 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Process a Purchase Return
+     */
+    public function purchaseReturn(Request $request)
+    {
+        $businessId = $request->user()->business_id;
+
+        $validated = $request->validate([
+            'transaction_id' => [
+                'required',
+                Rule::exists('transactions', 'id')->where('business_id', $businessId)
+            ],
+            'return_amount' => 'required|numeric|min:0',
+            'lines' => 'required|array', // Array of product_id and qty to return
+            'lines.*.product_id' => 'required|integer',
+            'lines.*.quantity' => 'required|numeric|min:1',
+            'lines.*.serial_numbers' => 'nullable|array',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $original = DB::table('transactions')
+                ->where('id', $validated['transaction_id'])
+                ->where('business_id', $businessId)
+                ->first();
+
+            if (!$original) {
+                return response()->json(['message' => 'Transaction not found or access denied'], 404);
+            }
+
+            // Create Return Transaction
+            $returnTxId = DB::table('transactions')->insertGetId([
+                'business_id' => $request->user()->business_id,
+                'location_id' => $original->location_id,
+                'type' => 'purchase_return',
+                'status' => 'final',
+                'contact_id' => $original->contact_id,
+                'return_parent_id' => $original->id,
+                'total_before_tax' => $validated['return_amount'],
+                'tax_amount' => 0,
+                'final_total' => $validated['return_amount'],
+                'transaction_date' => now(),
+                'created_by' => $request->user()->id,
+                'created_at' => now(),
+            ]);
+
+            // Deduct Inventory and create return lines
+            foreach ($validated['lines'] as $line) {
+                DB::table('transaction_lines')->insert([
+                    'transaction_id' => $returnTxId,
+                    'product_id' => $line['product_id'],
+                    'quantity' => $line['quantity'],
+                    'unit_price' => 0,
+                    'unit_price_inc_tax' => 0,
+                    'item_tax' => 0,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                DB::table('product_stocks')
+                    ->where('product_id', $line['product_id'])
+                    ->where('location_id', $original->location_id)
+                    ->decrement('qty_available', $line['quantity']);
+                    
+                // Phase 8: Revert/Delete Serials
+                if (!empty($line['serial_numbers'])) {
+                    DB::table('product_serials')
+                        ->where('business_id', $businessId)
+                        ->where('product_id', $line['product_id'])
+                        ->whereIn('serial_number', $line['serial_numbers'])
+                        ->where('status', 'available')
+                        ->delete(); // Remove the serials returned to supplier
+                }
+            }
+
+            DB::commit();
+            return response()->json(['message' => 'Purchase return processed successfully', 'return_id' => $returnTxId]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to process return', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Display a specific purchase.
+     */
+    public function show(Request $request, $id)
+    {
+        $businessId = $request->user()->business_id;
+
+        $purchase = DB::table('transactions')
+            ->where('id', $id)
+            ->where('business_id', $businessId)
+            ->where('type', 'purchase')
+            ->first();
+
+        if (!$purchase) {
+            return response()->json(['message' => 'Purchase not found'], 404);
+        }
+
+        $lines = DB::table('transaction_lines')
+            ->join('products', 'transaction_lines.product_id', '=', 'products.id')
+            ->where('transaction_lines.transaction_id', $id)
+            ->select('transaction_lines.*', 'products.name as product_name')
+            ->get();
+
+        $serials = DB::table('product_serials')
+            ->where('purchase_id', $id)
+            ->get();
+
+        $contact = DB::table('contacts')->where('id', $purchase->contact_id)->first();
+
+        $purchase->lines = $lines;
+        $purchase->serials = $serials;
+        $purchase->supplier = $contact;
+
+        return response()->json($purchase);
     }
 }

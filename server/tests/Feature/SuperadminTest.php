@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use App\Models\User;
+use App\Domain\IAM\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class SuperadminTest extends TestCase
@@ -15,23 +15,29 @@ class SuperadminTest extends TestCase
     {
         parent::setUp();
 
+        $this->seed(\Database\Seeders\RolesAndPermissionsSeeder::class);
+
+        $this->seed(\Database\Seeders\RolesAndPermissionsSeeder::class);
+
         // Create Superadmin User
         $this->user = User::factory()->create([
             'id' => 1,
             'email' => 'superadmin@example.com',
         ]);
 
+        $this->user->assignRole('SuperAdmin');
+
         // Create a dummy business
-        $this->businessId = DB::table('businesses')->insertGetId([
+        $this->businessId = \App\Domain\Tenant\Models\Business::factory()->create([
             'name' => 'Dummy SaaS Tenant',
             'owner_id' => $this->user->id,
             'is_active' => true,
-        ]);
+        ])->id;
     }
 
     public function test_can_list_businesses()
     {
-        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/superadmin/businesses');
+        $response = $this->actingAs($this->user)->getJson('/api/v1/superadmin/businesses');
 
         $response->assertStatus(200)
                  ->assertJsonPath('data.0.business_name', 'Dummy SaaS Tenant')
@@ -40,7 +46,7 @@ class SuperadminTest extends TestCase
 
     public function test_can_toggle_business_status()
     {
-        $response = $this->actingAs($this->user, 'sanctum')->postJson("/api/v1/superadmin/businesses/{$this->businessId}/toggle");
+        $response = $this->actingAs($this->user)->postJson("/api/v1/superadmin/businesses/{$this->businessId}/toggle");
 
         $response->assertStatus(200)
                  ->assertJson(['is_active' => false]);

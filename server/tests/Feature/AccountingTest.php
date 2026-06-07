@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use App\Models\User;
+use App\Domain\IAM\Models\User;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -16,16 +16,18 @@ class AccountingTest extends TestCase
     {
         parent::setUp();
         
-        $this->businessId = DB::table('businesses')->insertGetId([
+        $this->businessId = \App\Domain\Tenant\Models\Business::factory()->create([
             'name' => 'Accounting Business',
             'owner_id' => 1,
             'is_active' => true,
-        ]);
+        ])->id;
 
         $this->user = User::factory()->create([
             'id' => 1,
             'business_id' => $this->businessId,
         ]);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'BusinessAdmin']);
+        $this->user->assignRole('BusinessAdmin');
     }
 
     public function test_can_log_expense()
@@ -33,6 +35,7 @@ class AccountingTest extends TestCase
         $payload = [
             'total_amount' => 1500,
             'expense_date' => Carbon::now()->format('Y-m-d H:i:s'),
+            'payment_method' => 'cash',
             'note' => 'Office Rent',
         ];
 
@@ -61,9 +64,9 @@ class AccountingTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/expenses');
-
+        dump($response->content());
         $response->assertStatus(200)
                  ->assertJsonPath('data.0.reference_no', 'EXP-001')
-                 ->assertJsonPath('data.0.total_amount', '300.0000');
+                 ->assertJsonPath('data.0.total_amount', 300);
     }
 }

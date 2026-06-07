@@ -12,17 +12,37 @@ class Business extends Model
 
     protected $guarded = ['id'];
 
+    protected static function newFactory()
+    {
+        return \Database\Factories\BusinessFactory::new();
+    }
+
     /**
      * The attributes that should be cast.
      *
      * @var array
      */
     protected $casts = [
-        'start_date' => 'date',
-        'settings' => 'array',
-        'is_active' => 'boolean',
-        'subscription_expires_at' => 'datetime',
+        'start_date'             => 'date',
+        'settings'               => 'array',
+        'enabled_modules'        => 'array',
+        'active_modules'         => 'array',
+        'communication_settings' => 'array',
+        'is_active'              => 'boolean',
+        'subscription_expires_at'=> 'datetime',
     ];
+
+    /**
+     * Check if a specific module is enabled for this tenant.
+     * Defaults to TRUE when enabled_modules is null (no restrictions set).
+     */
+    public function hasModule(string $module): bool
+    {
+        if ($this->enabled_modules === null) {
+            return true; // no restrictions — all modules allowed
+        }
+        return (bool) ($this->enabled_modules[$module] ?? true);
+    }
 
     /**
      * Get the owner of the business.

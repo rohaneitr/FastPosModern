@@ -57,10 +57,15 @@ class InventoryController extends Controller
             $stock = DB::table('product_stocks')
                 ->where('product_id', $validated['product_id'])
                 ->where('location_id', $validated['location_id'])
+                ->lockForUpdate()
                 ->first();
 
             $qtyBefore = $stock ? $stock->qty_available : 0;
             $qtyAfter = $qtyBefore + $validated['quantity'];
+
+            if ($qtyAfter < 0) {
+                throw new \Exception('Stock adjustment would result in negative inventory.');
+            }
 
             if ($stock) {
                 DB::table('product_stocks')
@@ -142,6 +147,7 @@ class InventoryController extends Controller
             $dest = DB::table('product_stocks')
                 ->where('product_id', $validated['product_id'])
                 ->where('location_id', $validated['to_location_id'])
+                ->lockForUpdate()
                 ->first();
 
             if ($dest) {

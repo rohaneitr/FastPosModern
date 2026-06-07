@@ -10,8 +10,12 @@ return new class extends Migration
     {
         // Add Commission Agents to Users
         Schema::table('users', function (Blueprint $table) {
-            $table->boolean('is_cmmsn_agent')->default(false)->after('business_id');
-            $table->decimal('cmmsn_percent', 5, 2)->default(0)->after('is_cmmsn_agent');
+            if (!Schema::hasColumn('users', 'is_cmmsn_agent')) {
+                $table->boolean('is_cmmsn_agent')->default(false)->after('business_id');
+            }
+            if (!Schema::hasColumn('users', 'cmmsn_percent')) {
+                $table->decimal('cmmsn_percent', 5, 2)->default(0)->after('is_cmmsn_agent');
+            }
         });
 
         // Add Advanced fields to Transactions
@@ -22,7 +26,9 @@ return new class extends Migration
             if (!Schema::hasColumn('transactions', 'return_parent_id')) {
                 $table->foreignId('return_parent_id')->nullable()->constrained('transactions')->after('status')->comment('Links a sell_return to original sale');
             }
-            $table->string('discount_type')->nullable()->after('discount_amount'); // fixed, percentage
+            if (!Schema::hasColumn('transactions', 'discount_type')) {
+                $table->string('discount_type')->nullable()->after('discount_amount'); // fixed, percentage
+            }
         });
     }
 

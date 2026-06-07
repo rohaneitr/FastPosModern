@@ -42,6 +42,8 @@ class CategoryController extends Controller
             ],
         ]);
 
+        $validated['created_by'] = $request->user()->id;
+
         $category = Category::create($validated);
 
         return response()->json(['message' => 'Category created successfully', 'data' => $category], 201);
@@ -89,6 +91,11 @@ class CategoryController extends Controller
      */
     public function destroy(Category $category)
     {
+        $productsCount = \App\Domain\Catalog\Models\Product::where('category_id', $category->id)->count();
+        if ($productsCount > 0) {
+            return response()->json(['message' => 'Cannot delete category with associated products.'], 422);
+        }
+
         $category->delete();
 
         return response()->json(['message' => 'Category deleted successfully']);

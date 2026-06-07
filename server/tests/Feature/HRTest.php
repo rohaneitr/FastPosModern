@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use App\Models\User;
+use App\Domain\IAM\Models\User;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -16,27 +16,39 @@ class HRTest extends TestCase
     {
         parent::setUp();
         
-        $this->businessId = DB::table('businesses')->insertGetId([
+        $this->businessId = \App\Domain\Tenant\Models\Business::factory()->create([
             'name' => 'HR Business',
             'owner_id' => 1,
             'is_active' => true,
-        ]);
+        ])->id;
 
         $this->user = User::factory()->create([
             'id' => 1,
             'business_id' => $this->businessId,
         ]);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'BusinessAdmin']);
+        $this->user->assignRole('BusinessAdmin');
     }
 
     public function test_can_list_employees()
     {
-        DB::table('employees')->insert([
+        $employeeId = DB::table('users')->insertGetId([
             'business_id' => $this->businessId,
-            'employee_id' => 'EMP-100',
             'first_name' => 'Jane',
             'last_name' => 'Smith',
-            'department' => 'Sales',
-            'is_active' => true,
+            'username' => 'janesmith',
+            'email' => 'jane@example.com',
+            'password' => 'pass',
+            'allow_login' => true,
+            'created_at' => Carbon::now(),
+            'updated_at' => Carbon::now(),
+        ]);
+
+        DB::table('employee_profiles')->insert([
+            'business_id' => $this->businessId,
+            'user_id' => $employeeId,
+            'designation' => 'Sales',
+            'base_salary' => 5000,
             'created_at' => Carbon::now(),
             'updated_at' => Carbon::now(),
         ]);
@@ -44,26 +56,31 @@ class HRTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/hr/employees');
 
         $response->assertStatus(200)
-                 ->assertJsonPath('data.0.first_name', 'Jane')
-                 ->assertJsonPath('data.0.employee_id', 'EMP-100');
+                 ->assertJsonFragment(['first_name' => 'Jane'])
+                 ->assertJsonFragment(['designation' => 'Sales']);
     }
 
     public function test_can_list_payrolls()
     {
-        $employeeId = DB::table('employees')->insertGetId([
+        $employeeId = DB::table('users')->insertGetId([
             'business_id' => $this->businessId,
             'first_name' => 'Jane',
             'last_name' => 'Smith',
+            'username' => 'janesmith2',
+            'email' => 'jane2@example.com',
+            'password' => 'pass',
+            'allow_login' => true,
             'created_at' => Carbon::now(),
             'updated_at' => Carbon::now(),
         ]);
 
         DB::table('payrolls')->insert([
             'business_id' => $this->businessId,
-            'employee_id' => $employeeId,
+            'user_id' => $employeeId,
             'reference_no' => 'PAY-2605-01',
             'month' => '2026-05',
-            'total_amount' => 5000,
+            'base_salary' => 5000,
+            'net_salary' => 4500,
             'payment_status' => 'paid',
             'created_at' => Carbon::now(),
             'updated_at' => Carbon::now(),
@@ -72,7 +89,8 @@ class HRTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/hr/payrolls');
 
         $response->assertStatus(200)
-                 ->assertJsonPath('data.0.month', '2026-05')
-                 ->assertJsonPath('data.0.total_amount', '5000.0000');
+                 ->assertJsonPath('0.month', '2026-05')
+                 ->assertJsonPath('0.base_salary', 5000)
+                 ->assertJsonPath('0.net_salary', 4500);
     }
 }

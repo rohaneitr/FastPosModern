@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use App\Models\User;
+use App\Domain\IAM\Models\User;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -16,16 +16,18 @@ class ReportingTest extends TestCase
     {
         parent::setUp();
 
-        $this->businessId = DB::table('businesses')->insertGetId([
+        $this->businessId = \App\Domain\Tenant\Models\Business::factory()->create([
             'name' => 'Reporting Business',
             'owner_id' => 1,
             'is_active' => true,
-        ]);
+        ])->id;
 
         $this->user = User::factory()->create([
             'id' => 1,
             'business_id' => $this->businessId,
         ]);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'BusinessAdmin']);
+        $this->user->assignRole('BusinessAdmin');
 
         $this->locationId = DB::table('locations')->insertGetId([
             'business_id' => $this->businessId,
@@ -43,6 +45,7 @@ class ReportingTest extends TestCase
             'type' => 'sell',
             'status' => 'final',
             'final_total' => 500,
+            'total_before_tax' => 500,
             'transaction_date' => Carbon::now(),
         ]);
 
@@ -54,6 +57,7 @@ class ReportingTest extends TestCase
             'type' => 'purchase',
             'status' => 'received',
             'final_total' => 200,
+            'total_before_tax' => 200,
             'transaction_date' => Carbon::now(),
         ]);
 

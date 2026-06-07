@@ -1,0 +1,26 @@
+"{"message":"Checkout failed","error":"SQLSTATE[HY000]: General error: 1 table transactions has no column named amount_due (Connection: sqlite, Database: \/var\/db\/database.sqlite, SQL: insert into \"transactions\" (\"business_id\", \"location_id\", \"created_by\", \"type\", \"status\", \"is_quotation\", \"invoice_no\", \"transaction_date\", \"total_before_tax\", \"tax_amount\", \"discount_amount\", \"discount_type\", \"final_total\", \"amount_due\", \"payment_status\", \"created_at\", \"updated_at\") values (1, 1, 2, sell, final, 0, INV-1780737883-257, 2026-06-06 09:24:43, 75, 7.5, 0, ?, 82.5, 0, paid, 2026-06-06 09:24:43, 2026-06-06 09:24:43))"}" // tests/Feature/CheckoutTest.php:51
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\CheckoutTest[39m
+  [31;1m⨯[39;22m[90m [39m[90mcheckout creates transaction and decrements stock[39m[90m                   [39m [90m7.09s[39m  
+  [33;1m![39;22m[90m [39m[90mcheckout rejects insufficient stock[39m[90m [39m[33m→ file_get_contents(/var/www/ht[39m[90m…[39m [90m0.12s[39m  
+  [33;1m![39;22m[90m [39m[90mcheckout with invalid location returns 422[39m[90m [39m[33m→ file_get_contents(/var[39m[90m…[39m [90m0.06s[39m  
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\CheckoutTest[22m [90m>[39m checkout creates transaction and dec…   
+[39;1m  Expected response status code [201] but received 500.
+Failed asserting that 500 is identical to 201.[39;22m
+
+  at [32mtests/Feature/CheckoutTest.php[39m:[32m52[39m
+     48▕             ],
+     49▕         ]);
+     50▕ 
+     51▕         dump($response->content());
+  ➜  52▕         $response->assertStatus(201)
+     53▕                  ->assertJsonStructure(['transaction_id', 'invoice_no']);
+     54▕ 
+     55▕         // Verify stock decrement
+     56▕         $stock = DB::table('product_stocks')->where('product_id', $this->productId)->first();
+
+
+  [90mTests:[39m    [31;1m1 failed[39;22m[90m,[39m[39m [39m[33;1m2 warnings[39;22m[90m (4 assertions)[39m
+  [90mDuration:[39m [39m7.45s[39m
+

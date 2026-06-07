@@ -11,6 +11,8 @@ class Plan extends Model
     protected $casts = [
         'price' => 'decimal:2',
         'is_active' => 'boolean',
+        'features' => 'array',
+        'enabled_modules' => 'array',
     ];
 
     public function subscriptions()
