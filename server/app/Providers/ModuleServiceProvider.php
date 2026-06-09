@@ -46,6 +46,13 @@ class ModuleServiceProvider extends ServiceProvider
                 if (File::exists($webRoutePath)) {
                     Route::middleware('web')->group($webRoutePath);
                 }
+                // Load Console Commands
+                $consolePath = $module . '/Console';
+                if (File::exists($consolePath)) {
+                    $this->commands([
+                        \App\Modules\Reports\Console\BackfillLedgerCommand::class,
+                    ]);
+                }
             }
         }
     }

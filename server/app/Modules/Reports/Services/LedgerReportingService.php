@@ -16,6 +16,8 @@ class LedgerReportingService
             ->join('journal_entries', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
             ->where('journal_entries.business_id', $businessId)
             ->whereBetween('journal_entries.date', [$startDate, $endDate])
+            ->whereNull('journal_entries.deleted_at')
+            ->whereNull('journal_lines.deleted_at')
             ->select(
                 DB::raw("SUM(CASE WHEN journal_lines.type = 'debit' THEN journal_lines.amount ELSE 0 END) as total_debits"),
                 DB::raw("SUM(CASE WHEN journal_lines.type = 'credit' THEN journal_lines.amount ELSE 0 END) as total_credits")
@@ -39,6 +41,8 @@ class LedgerReportingService
             ->join('chart_of_accounts', 'journal_lines.chart_of_account_id', '=', 'chart_of_accounts.id')
             ->where('journal_entries.business_id', $businessId)
             ->whereBetween('journal_entries.date', [$startDate, $endDate])
+            ->whereNull('journal_entries.deleted_at')
+            ->whereNull('journal_lines.deleted_at')
             ->whereIn('chart_of_accounts.type', ['Revenue', 'Expense', 'COGS'])
             ->select(
                 'chart_of_accounts.type as account_type',
