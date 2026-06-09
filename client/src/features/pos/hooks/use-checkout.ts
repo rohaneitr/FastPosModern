@@ -86,7 +86,7 @@ export function useCheckout({ locationId, registerIsOpen, onSerialRequired, onSu
       items: items.map((item) => ({
         product_id: item.product_id || item.id,
         quantity: item.quantity,
-        price: item.price,
+        price: Number(item.price) * (item.fractional_ratio || 1),
         fractional_ratio: item.fractional_ratio || 1,
         dosage_instructions: item.dosage_instructions || undefined,
         serial_numbers: item.has_serial_number ? item.serial_numbers : undefined

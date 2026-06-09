@@ -21,14 +21,19 @@ export function useDeviceHeartbeat() {
       localStorage.setItem('pos_hardware_hash', hwHash);
     }
 
+    let isMounted = true;
+    let heartbeatInterval: any;
+
     const activateDevice = async () => {
       try {
         const res = await api.post('/devices/activate', { hardware_hash: hwHash });
+        if (!isMounted) return;
+
         const licenseKey = res.data.license_key;
         localStorage.setItem('pos_license_key', licenseKey);
         setDeviceLocked({ locked: false });
 
-        const heartbeatInterval = setInterval(() => {
+        heartbeatInterval = setInterval(() => {
           api.post('/devices/heartbeat', { license_key: licenseKey, hardware_hash: hwHash })
             .catch((err) => {
               if (err.response?.status === 403 || err.response?.status === 402 || err.response?.status === 401) {
@@ -36,9 +41,8 @@ export function useDeviceHeartbeat() {
               }
             });
         }, 5 * 60 * 1000);
-
-        return () => clearInterval(heartbeatInterval);
       } catch (err: any) {
+        if (!isMounted) return;
         const isLimit = err.response?.data?.code === 'QUOTA_EXCEEDED';
         setDeviceLocked({
           locked: true,
@@ -48,10 +52,11 @@ export function useDeviceHeartbeat() {
       }
     };
 
-    let cleanup: any;
-    activateDevice().then(res => cleanup = res);
+    activateDevice();
+
     return () => {
-      if (cleanup) cleanup();
+      isMounted = false;
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
     };
   }, []);
 
