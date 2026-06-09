@@ -4,15 +4,15 @@ namespace Tests\Feature\DataMigration;
 
 use Tests\TestCase;
 use App\Modules\Tenant\Models\Business;
-use App\Domain\Imports\Models\ImportStatus;
-use App\Domain\Imports\Jobs\ProcessProductImportChunk;
+use App\Modules\Imports\Models\ImportStatus;
+use App\Modules\Imports\Jobs\ProcessProductImportChunk;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\UploadedFile;
-use App\Domain\Imports\Jobs\ImportFileMasterJob;
+use App\Modules\Imports\Jobs\ImportFileMasterJob;
 use Illuminate\Foundation\Testing\WithoutMiddleware;
 
 class BulkProductImportTest extends TestCase

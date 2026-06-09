@@ -11,7 +11,7 @@ class RestaurantServiceProvider extends ServiceProvider
     {
         // Hook KOT dispatch listener into Event Bus
         Event::listen(
-            \App\Domain\Shared\Events\KotTicketEmitted::class,
+            \App\Modules\Shared\Events\KotTicketEmitted::class,
             [\App\Modules\Restaurant\Listeners\DispatchKotToKitchen::class, 'handle']
         );
 

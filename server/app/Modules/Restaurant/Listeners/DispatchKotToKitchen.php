@@ -2,7 +2,7 @@
 
 namespace App\Modules\Restaurant\Listeners;
 
-use App\Domain\Shared\Events\KotTicketEmitted;
+use App\Modules\Shared\Events\KotTicketEmitted;
 use App\Modules\Restaurant\Jobs\PrintKitchenThermalTicketJob;
 use Illuminate\Support\Facades\Log;
 

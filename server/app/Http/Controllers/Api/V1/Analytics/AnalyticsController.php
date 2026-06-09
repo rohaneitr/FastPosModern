@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\V1\Analytics;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Domain\Analytics\Services\ConsolidatedAnalyticsEngine;
+use App\Modules\Reporting\Services\ConsolidatedAnalyticsEngine;
 
 class AnalyticsController extends Controller
 {

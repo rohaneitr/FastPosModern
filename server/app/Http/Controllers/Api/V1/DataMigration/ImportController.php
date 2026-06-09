@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
-use App\Domain\Imports\Models\ImportStatus;
-use App\Domain\Imports\Jobs\ProcessProductImportChunk;
+use App\Modules\Imports\Models\ImportStatus;
+use App\Modules\Imports\Jobs\ProcessProductImportChunk;
 use Illuminate\Validation\ValidationException;
 
 class ImportController extends Controller
@@ -34,7 +34,7 @@ class ImportController extends Controller
         ]);
 
         // Dispatch Master Job to handle everything asynchronously
-        \App\Domain\Imports\Jobs\ImportFileMasterJob::dispatch($businessId, $importStatus->id, $path);
+        \App\Modules\Imports\Jobs\ImportFileMasterJob::dispatch($businessId, $importStatus->id, $path);
 
         return response()->json([
             'message' => 'Import queued successfully.',

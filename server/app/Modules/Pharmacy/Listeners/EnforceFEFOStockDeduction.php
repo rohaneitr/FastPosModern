@@ -2,7 +2,7 @@
 
 namespace App\Modules\Pharmacy\Listeners;
 
-use App\Domain\Shared\Events\TransactionProcessing;
+use App\Modules\Shared\Events\TransactionProcessing;
 use App\Modules\Pharmacy\Exceptions\ExpiredStockException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;

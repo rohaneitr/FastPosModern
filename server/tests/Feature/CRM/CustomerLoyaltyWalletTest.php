@@ -7,7 +7,7 @@ use Tests\TestCase;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use Illuminate\Support\Facades\Queue;
-use App\Domain\POS\Jobs\SendInvoiceNotificationJob;
+use App\Modules\Sales\Jobs\SendInvoiceNotificationJob;
 
 class CustomerLoyaltyWalletTest extends TestCase
 {

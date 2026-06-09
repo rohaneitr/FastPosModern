@@ -2,7 +2,7 @@
 
 namespace App\Modules\Pharmacy\Listeners;
 
-use App\Domain\Shared\Events\TransactionCompleted;
+use App\Modules\Shared\Events\TransactionCompleted;
 use Illuminate\Support\Facades\Log;
 
 class PharmacyTransactionCompletedListener

@@ -5,7 +5,7 @@ namespace Tests\Feature\Modular;
 use Tests\TestCase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Cache;
-use App\Domain\Shared\Events\TransactionCompleted;
+use App\Modules\Shared\Events\TransactionCompleted;
 use App\Modules\Kernel\ModuleManifest;
 use App\Modules\Kernel\ModuleDependencyException;
 

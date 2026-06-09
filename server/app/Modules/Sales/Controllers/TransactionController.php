@@ -403,7 +403,7 @@ class TransactionController extends Controller
                     if (!empty($contact->mobile)) $notifyMethods[] = 'whatsapp';
 
                     if (!empty($notifyMethods)) {
-                        \App\Domain\POS\Jobs\SendInvoiceNotificationJob::dispatch($result, $businessId, $contact, $notifyMethods);
+                        \App\Modules\Sales\Jobs\SendInvoiceNotificationJob::dispatch($result, $businessId, $contact, $notifyMethods);
                     }
                 }
             }

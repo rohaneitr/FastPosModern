@@ -27,7 +27,7 @@ class PublicInvoiceController extends Controller
 
         if (!$disk->exists($fileName)) {
             // Generate on the fly if somehow missing
-            $engine = app(\App\Domain\POS\Services\PDFInvoiceEngine::class);
+            $engine = app(\App\Modules\Sales\Services\PDFInvoiceEngine::class);
             $engine->streamInvoice($transaction->id, $transaction->business_id);
         }
 

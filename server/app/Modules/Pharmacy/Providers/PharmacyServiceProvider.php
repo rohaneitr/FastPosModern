@@ -4,7 +4,7 @@ namespace App\Modules\Pharmacy\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Event;
-use App\Domain\Shared\Events\TransactionCompleted;
+use App\Modules\Shared\Events\TransactionCompleted;
 use App\Modules\Pharmacy\Listeners\PharmacyTransactionCompletedListener;
 
 class PharmacyServiceProvider extends ServiceProvider
@@ -18,12 +18,12 @@ class PharmacyServiceProvider extends ServiceProvider
     {
         // Zero-Coupling: Listen to core events
         Event::listen(
-            \App\Domain\Shared\Events\TransactionCompleted::class,
+            \App\Modules\Shared\Events\TransactionCompleted::class,
             [\App\Modules\Pharmacy\Listeners\PharmacyTransactionCompletedListener::class, 'handle']
         );
 
         Event::listen(
-            \App\Domain\Shared\Events\TransactionProcessing::class,
+            \App\Modules\Shared\Events\TransactionProcessing::class,
             [\App\Modules\Pharmacy\Listeners\EnforceFEFOStockDeduction::class, 'handle']
         );
         

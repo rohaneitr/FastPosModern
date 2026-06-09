@@ -5,7 +5,7 @@ namespace Tests\Feature\Pharmacy;
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use App\Domain\Shared\Events\TransactionProcessing;
+use App\Modules\Shared\Events\TransactionProcessing;
 use App\Modules\Pharmacy\Exceptions\ExpiredStockException;
 
 class PharmacyIntegrityTest extends TestCase

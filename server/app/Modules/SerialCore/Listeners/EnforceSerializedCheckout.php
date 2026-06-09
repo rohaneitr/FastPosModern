@@ -2,7 +2,7 @@
 
 namespace App\Modules\SerialCore\Listeners;
 
-use App\Domain\Shared\Events\TransactionProcessing;
+use App\Modules\Shared\Events\TransactionProcessing;
 use App\Modules\SerialCore\Exceptions\SerialAlreadyDepletedException;
 use Illuminate\Support\Facades\DB;
 

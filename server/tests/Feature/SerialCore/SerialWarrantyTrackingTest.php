@@ -5,7 +5,7 @@ namespace Tests\Feature\SerialCore;
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use App\Domain\Shared\Events\TransactionProcessing;
+use App\Modules\Shared\Events\TransactionProcessing;
 use App\Modules\SerialCore\Services\WarrantyManager;
 use App\Modules\SerialCore\Exceptions\SerialAlreadyDepletedException;
 use App\Modules\SerialCore\Exceptions\WarrantyExpiredException;

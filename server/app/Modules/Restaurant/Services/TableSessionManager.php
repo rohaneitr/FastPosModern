@@ -4,7 +4,7 @@ namespace App\Modules\Restaurant\Services;
 
 use Illuminate\Support\Facades\DB;
 use App\Modules\Restaurant\Exceptions\TableAlreadyOccupiedException;
-use App\Domain\Shared\Events\KotTicketEmitted;
+use App\Modules\Shared\Events\KotTicketEmitted;
 use Carbon\Carbon;
 
 class TableSessionManager

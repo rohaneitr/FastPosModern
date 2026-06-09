@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { ImportDashboard } from '../../../../../components/imports/ImportDashboard';
+import { ImportDashboard } from '../../../../../features/imports/ImportDashboard';
 
 export default function BulkImportsPage() {
     return (

@@ -39,15 +39,7 @@ Route::prefix('v1')->group(function () {
 
 
 
-            // Analytics Domain
-            Route::prefix('analytics')->group(function () {
-                Route::get('/consolidated-overview', [\App\Domain\Analytics\Controllers\UnifiedAnalyticsController::class, 'getConsolidatedOverview']);
-            });
-        Route::middleware('role_or_permission:BusinessAdmin|InventoryManager')->group(function () {
-            // Bulk Data Migration & Imports
-            Route::post('/data-migration/import/products', [\App\Http\Controllers\Api\V1\DataMigration\ImportController::class, 'importProducts']);
-            Route::get('/data-migration/status/{id}', [\App\Http\Controllers\Api\V1\DataMigration\ImportController::class, 'getStatus']);
-        });
+
 
         // Sales & CRM
         Route::middleware('role_or_permission:BusinessAdmin|Cashier')->group(function () {
@@ -59,19 +51,7 @@ Route::prefix('v1')->group(function () {
 
 
 
-        // Accounting & Reporting
-        Route::middleware('role_or_permission:BusinessAdmin')->group(function () {
-            Route::get('/analytics/overview', [\App\Http\Controllers\Api\V1\Analytics\AnalyticsController::class, 'overview']);
-        });
-        Route::middleware('role_or_permission:BusinessAdmin|Accountant')->group(function () {
 
-            Route::get('/reports/dashboard', [\App\Domain\Reporting\Controllers\ReportController::class, 'dashboardKPIs']);
-            Route::get('/reports/profit-loss', [\App\Domain\Reporting\Controllers\ReportController::class, 'profitLoss']);
-            Route::get('/reports/sales', [\App\Domain\Reporting\Controllers\ReportController::class, 'salesReport']);
-            Route::get('/reports/sales/export', [\App\Domain\Reporting\Controllers\ReportController::class, 'exportSales']);
-            Route::get('/invoices/{id}', [\App\Domain\Reporting\Controllers\InvoiceController::class, 'show']);
-            Route::get('/invoices/{id}/print', [\App\Domain\Reporting\Controllers\InvoiceController::class, 'printView']);
-        });
         });
     });
 
@@ -86,7 +66,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/auth/me', [\App\Modules\IAM\Controllers\AuthController::class, 'me']);
             
             Route::middleware('role_or_permission:BusinessAdmin|Cashier')->group(function () {
-                Route::get('/sync/products', [\App\Domain\Catalog\Controllers\ProductController::class, 'index']);
+                Route::get('/sync/products', [\App\Modules\Catalog\Controllers\ProductController::class, 'index']);
                 Route::get('/sync/pull', [\App\Modules\Tenant\Controllers\SyncController::class, 'pull']);
                 Route::post('/sync/push', [\App\Modules\Tenant\Controllers\SyncController::class, 'push']);
             });
