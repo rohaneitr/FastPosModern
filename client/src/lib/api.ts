@@ -6,7 +6,7 @@ const getBaseUrl = () => {
   if (typeof window === 'undefined') {
     return 'http://backend:8000/api/v1';
   }
-  return '/api/v1';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002/api/v1';
 };
 
 const BASE_URL = getBaseUrl();
@@ -31,7 +31,7 @@ api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const hwHash = localStorage.getItem('pos_hardware_hash');
     if (hwHash) {
-      config.headers['X-Hardware-Hash'] = hwHash;
+      config.headers['X-Device-Hash'] = hwHash;
     }
   }
   return config;

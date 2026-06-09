@@ -15,15 +15,13 @@ return new class extends Migration
 
         foreach ($tables as $table) {
             if (Schema::hasTable($table) && Schema::hasColumn($table, 'business_id')) {
-                Schema::table($table, function (Blueprint $tableBlueprint) use ($table) {
-                    $sm = Schema::getConnection()->getDoctrineSchemaManager();
-                    $indexesFound = $sm->listTableIndexes($table);
-                    $indexName = "{$table}_business_id_index";
-
-                    if (!array_key_exists($indexName, $indexesFound)) {
+                $indexName = "{$table}_business_id_index";
+                
+                if (!Schema::hasIndex($table, $indexName)) {
+                    Schema::table($table, function (Blueprint $tableBlueprint) use ($indexName) {
                         $tableBlueprint->index('business_id', $indexName);
-                    }
-                });
+                    });
+                }
             }
         }
     }
@@ -37,15 +35,13 @@ return new class extends Migration
 
         foreach ($tables as $table) {
             if (Schema::hasTable($table) && Schema::hasColumn($table, 'business_id')) {
-                Schema::table($table, function (Blueprint $tableBlueprint) use ($table) {
-                    $sm = Schema::getConnection()->getDoctrineSchemaManager();
-                    $indexesFound = $sm->listTableIndexes($table);
-                    $indexName = "{$table}_business_id_index";
-
-                    if (array_key_exists($indexName, $indexesFound)) {
+                $indexName = "{$table}_business_id_index";
+                
+                if (Schema::hasIndex($table, $indexName)) {
+                    Schema::table($table, function (Blueprint $tableBlueprint) use ($indexName) {
                         $tableBlueprint->dropIndex($indexName);
-                    }
-                });
+                    });
+                }
             }
         }
     }

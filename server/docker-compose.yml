@@ -1,4 +1,4 @@
-﻿services:
+services:
   backend:
     build:
       context: .
@@ -22,7 +22,7 @@
       SANCTUM_STATEFUL_DOMAINS: "localhost,localhost:3000,admin.localhost:3000,tech.localhost:3000,pharma.localhost:3000,admin.localhost,tech.localhost,pharma.localhost,127.0.0.1,127.0.0.1:3000"
       SESSION_DRIVER: database
       SESSION_LIFETIME: "120"
-      SESSION_DOMAIN: "null"
+      SESSION_DOMAIN: ".localhost"
       SESSION_COOKIE: "fastpos_session"
       SESSION_SECURE_COOKIE: "false"
       CACHE_STORE: redis

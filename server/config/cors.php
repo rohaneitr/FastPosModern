@@ -26,7 +26,7 @@ return [
         str_replace('localhost', '127.0.0.1', env('FRONTEND_URL', 'http://localhost:3000')),
     ]),
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => ['#^http://([a-z0-9-]+\.)?localhost:3000$#'],
 
     'allowed_headers' => ['*'],
 

@@ -22,6 +22,7 @@ async function getTenantConfig(domain: string): Promise<TenantConfig | null> {
       }
     });
 
+
     if (!res.ok) {
       if (res.status === 403) {
         throw new Error('Tenant is suspended or inactive');

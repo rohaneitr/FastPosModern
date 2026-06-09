@@ -410,9 +410,10 @@ class SuperadminController extends Controller
             'total_tenants' => $totalTenants,
             'active_subscriptions' => $activeSubscriptions,
             'total_plans' => $totalPlans,
-            'lifetime_revenue' => $revenue,
+            'revenue' => $revenue, // changed from lifetime_revenue to revenue
             'mrr' => round($mrr, 2),
             'arr' => round($arr, 2),
+            'recent_activity' => [], // Added missing key to prevent frontend map() crash
         ]);
     }
 

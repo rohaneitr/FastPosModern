@@ -40,6 +40,6 @@ EXPOSE 8000
 CMD bash -c "\
     touch /var/db/database.sqlite && \
     php artisan config:clear && \
-    php artisan migrate:fresh --seed --force && \
+    php artisan migrate --force && \
     php -S 0.0.0.0:8000 -t public \
 "

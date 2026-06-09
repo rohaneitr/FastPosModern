@@ -188,7 +188,13 @@ class TransactionController extends Controller
 
                 $totalCogs = \App\Modules\Sales\Services\FinancialCalculator::of(0);
 
-                foreach ($validated['items'] as $item) {
+                // Sort items by product_id deterministically to prevent SQL deadlocks during lockForUpdate
+                $sortedItems = $validated['items'];
+                usort($sortedItems, function($a, $b) {
+                    return $a['product_id'] <=> $b['product_id'];
+                });
+
+                foreach ($sortedItems as $item) {
                     $fractionalRatio = $item['fractional_ratio'] ?? 1.0;
                     $actualQty = $item['quantity'] * $fractionalRatio;
 
@@ -278,16 +284,14 @@ class TransactionController extends Controller
                 }
                 
                 // Aggregate total exact COGS from batch map
-                if (!$isQuotation) {
+                if ($isPosting) {
                     foreach ($cogsMap as $cogs) {
                         $totalCogs = $totalCogs->plus(\App\Modules\Sales\Services\FinancialCalculator::of($cogs));
                     }
                 }
-                
-                DB::table('transaction_lines')->insert($lines);
 
                 // 3. Insert Payment
-                if (!$isQuotation && $amountPaid->isGreaterThan(0)) {
+                if ($isPosting && $amountPaid->isGreaterThan(0)) {
                     DB::table('transaction_payments')->insert([
                         'transaction_id' => $transactionId,
                         'amount' => (string) $amountPaid,
@@ -300,7 +304,7 @@ class TransactionController extends Controller
                 }
                 
                 // Mark quotation as converted if applicable
-                if (!$isQuotation && !empty($validated['convert_quotation_id'])) {
+                if ($isPosting && !empty($validated['convert_quotation_id'])) {
                     DB::table('transactions')
                         ->where('id', $validated['convert_quotation_id'])
                         ->where('business_id', $businessId)
@@ -308,7 +312,7 @@ class TransactionController extends Controller
                 }
 
                 // 4. Double-Entry Ledger Hook
-                if (!$isQuotation) {
+                if ($isPosting) {
                     $cashAccountId = \App\Modules\Finance\Services\TenantAccountResolver::resolve($businessId, \App\Modules\Finance\Services\TenantAccountResolver::CASH);
                     $receivableAccountId = \App\Modules\Finance\Services\TenantAccountResolver::resolve($businessId, \App\Modules\Finance\Services\TenantAccountResolver::AR);
                     $salesAccountId = \App\Modules\Finance\Services\TenantAccountResolver::resolve($businessId, \App\Modules\Finance\Services\TenantAccountResolver::SALES);
@@ -391,7 +395,7 @@ class TransactionController extends Controller
             \Illuminate\Support\Facades\Cache::store('redis')->forget("dashboard_kpis_business_{$businessId}");
 
             // Dispatch Omnichannel Notification / Digital Receipt
-            if (!$isQuotation) {
+            if ($isPosting) {
                 $contact = null;
                 if (!empty($validated['contact_id'])) {
                     $contact = DB::table('contacts')->where('id', $validated['contact_id'])->first();
@@ -605,7 +609,12 @@ class TransactionController extends Controller
                 ]);
 
                 $lines = [];
-                foreach ($tx['items'] as $item) {
+                $sortedItems = $tx['items'];
+                usort($sortedItems, function($a, $b) {
+                    return $a['product_id'] <=> $b['product_id'];
+                });
+
+                foreach ($sortedItems as $item) {
                     $lines[] = [
                         'transaction_id' => $transactionId,
                         'product_id' => $item['product_id'],
@@ -741,7 +750,10 @@ class TransactionController extends Controller
 
                 $totalCogs = \App\Modules\Sales\Services\FinancialCalculator::of(0);
 
-                foreach ($oldLines as $line) {
+                // Sort old lines by product_id deterministically to prevent SQL deadlocks during lockForUpdate
+                $sortedOldLines = collect($oldLines)->sortBy('product_id')->all();
+
+                foreach ($sortedOldLines as $line) {
                     $lineId = DB::table('transaction_lines')->insertGetId([
                         'transaction_id' => $newTxId,
                         'product_id' => $line->product_id,

@@ -13,6 +13,7 @@
     "@ducanh2912/next-pwa": "^10.2.9",
     "@rolldown/pluginutils": "^1.0.1",
     "axios": "^1.16.1",
+    "clsx": "^2.1.1",
     "decimal.js": "^10.6.0",
     "dexie": "^4.4.3",
     "dexie-react-hooks": "^4.4.0",
@@ -28,6 +29,7 @@
     "rolldown": "^1.1.0",
     "std-env": "^4.1.0",
     "swr": "^2.4.1",
+    "tailwind-merge": "^3.6.0",
     "tinyexec": "^1.2.4",
     "upath": "^3.0.7",
     "zustand": "^5.0.14"

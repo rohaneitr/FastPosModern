@@ -6,6 +6,7 @@ Route::middleware(['auth:sanctum', 'role:SuperAdmin'])->group(function () {
     Route::prefix('superadmin')->group(function () {
         Route::post('/licenses/generate', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'generateLicense']);
         Route::get('/overview-stats', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'overviewStats']);
+        Route::get('/dashboard-overview', [\App\Modules\SuperAdmin\Controllers\DashboardOverviewController::class, 'getOverview']);
         Route::get('/businesses', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'businesses']);
         Route::post('/businesses', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'storeBusiness']);
         Route::delete('/businesses/{id}', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'destroyBusiness']);

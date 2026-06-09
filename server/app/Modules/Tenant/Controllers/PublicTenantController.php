@@ -15,8 +15,12 @@ class PublicTenantController extends Controller
     public function resolveSubdomain(Request $request, $subdomain)
     {
         \Illuminate\Support\Facades\Log::info('Tenant Resolution Request: ' . $subdomain . ' from Host: ' . $request->getHost());
+        // Clean subdomain/domain strings to handle raw hosts
+        $cleanDomain = str_replace(['.localhost', ':3000', ':8000'], '', $subdomain);
+        \Illuminate\Support\Facades\Log::info('Cleaned domain: ' . $cleanDomain);
+
         $business = DB::table('businesses')
-            ->where('subdomain', $subdomain)
+            ->where('subdomain', $cleanDomain)
             ->where('is_active', true)
             ->select('id', 'name', 'branding', 'created_at')
             ->first();

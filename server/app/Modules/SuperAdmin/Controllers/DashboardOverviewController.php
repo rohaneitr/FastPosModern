@@ -41,7 +41,7 @@ class DashboardOverviewController extends Controller
 
             $businessIds = $recentTenants->pluck('id')->toArray();
             $deviceCounts = [];
-            if (!empty($businessIds)) {
+            if (!empty($businessIds) && \Illuminate\Support\Facades\Schema::hasTable('device_activations')) {
                 $deviceCounts = DB::table('device_activations')
                     ->whereIn('business_id', $businessIds)
                     ->where('status', 'active')
@@ -136,23 +136,25 @@ class DashboardOverviewController extends Controller
 
         // Device Limit Alert
         try {
-            $deviceLimitCheck = DB::select("
-                SELECT d.business_id, COUNT(d.id) as active_count, l.device_limit
-                FROM device_activations d
-                JOIN licenses l ON d.license_key = l.license_key
-                WHERE d.status = 'active' AND l.status = 'active'
-                GROUP BY d.business_id, l.device_limit
-                HAVING COUNT(d.id) >= l.device_limit
-            ");
-            
-            if (count($deviceLimitCheck) > 0) {
-                $systemAlerts[] = [
-                    'id' => $alertIdCounter++,
-                    'type' => 'warning',
-                    'title' => 'Device Quota Reached',
-                    'message' => count($deviceLimitCheck) . " tenant(s) have reached their maximum device limit.",
-                    'time' => 'Just now'
-                ];
+            if (\Illuminate\Support\Facades\Schema::hasTable('device_activations')) {
+                $deviceLimitCheck = DB::select("
+                    SELECT d.business_id, COUNT(d.id) as active_count, l.device_limit
+                    FROM device_activations d
+                    JOIN licenses l ON d.license_key = l.license_key
+                    WHERE d.status = 'active' AND l.status = 'active'
+                    GROUP BY d.business_id, l.device_limit
+                    HAVING COUNT(d.id) >= l.device_limit
+                ");
+                
+                if (count($deviceLimitCheck) > 0) {
+                    $systemAlerts[] = [
+                        'id' => $alertIdCounter++,
+                        'type' => 'warning',
+                        'title' => 'Device Quota Reached',
+                        'message' => count($deviceLimitCheck) . " tenant(s) have reached their maximum device limit.",
+                        'time' => 'Just now'
+                    ];
+                }
             }
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('Dashboard: Device Limit Alert Failed', ['error' => $e->getMessage()]);

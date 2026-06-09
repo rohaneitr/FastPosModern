@@ -26,16 +26,32 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
   }, [pathname]);
 
   useEffect(() => {
-    const token = sessionStorage.getItem('fastpos_token') || localStorage.getItem('fastpos_token');
-    const storedUser = sessionStorage.getItem('fastpos_user') || localStorage.getItem('fastpos_user');
-    
-    if (!token || !storedUser) {
-      router.replace('/login');
-      return;
-    }
+    const checkAuth = async () => {
+      let parsedUser = null;
+      const storedUser = sessionStorage.getItem('fastpos_user') || localStorage.getItem('fastpos_user');
+      
+      if (storedUser) {
+        try {
+          parsedUser = JSON.parse(storedUser);
+        } catch {}
+      }
 
-    try {
-      const parsedUser = JSON.parse(storedUser);
+      if (!parsedUser) {
+        try {
+          const res = await api.get('/user');
+          parsedUser = res.data.user || res.data;
+          sessionStorage.setItem('fastpos_user', JSON.stringify(parsedUser));
+        } catch {
+          router.replace('/login');
+          return;
+        }
+      }
+
+      if (!parsedUser) {
+        router.replace('/login');
+        return;
+      }
+
       setUser(parsedUser);
       
       // Pending Activation Check
@@ -44,20 +60,16 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
       } else {
          setIsPending(false);
       }
-    } catch {
-      localStorage.removeItem('fastpos_token');
-      localStorage.removeItem('fastpos_user');
-      router.replace('/login');
-    }
-  }, [router]);
+    };
+
+    checkAuth().catch(console.error);
+  }, [router, pathname]);
 
   const handleLogout = async () => {
     try { await api.post('/logout'); } catch {}
     finally {
       localStorage.removeItem('fastpos_user');
-      localStorage.removeItem('fastpos_token');
       sessionStorage.removeItem('fastpos_user');
-      sessionStorage.removeItem('fastpos_token');
       router.push('/login');
     }
   };
