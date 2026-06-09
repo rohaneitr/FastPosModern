@@ -17,8 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             '*',
         ]);
-        $middleware->append(\App\Http\Middleware\ActivityLogger::class);
-        $middleware->append(\App\Http\Middleware\SaaSMaintenanceMode::class);
+
         $middleware->append(\App\Http\Middleware\EnsureLicenseIsActive::class);
         $middleware->api(prepend: [
             \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',

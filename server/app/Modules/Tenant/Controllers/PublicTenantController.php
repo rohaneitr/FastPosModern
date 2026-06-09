@@ -12,8 +12,9 @@ class PublicTenantController extends Controller
      * Resolve a business by its subdomain.
      * Used by the frontend to load tenant branding and context.
      */
-    public function resolveSubdomain($subdomain)
+    public function resolveSubdomain(Request $request, $subdomain)
     {
+        \Illuminate\Support\Facades\Log::info('Tenant Resolution Request: ' . $subdomain . ' from Host: ' . $request->getHost());
         $business = DB::table('businesses')
             ->where('subdomain', $subdomain)
             ->where('is_active', true)
@@ -27,7 +28,7 @@ class PublicTenantController extends Controller
         $business->branding = $business->branding ? json_decode($business->branding, true) : null;
 
         return response()->json([
-            'business' => $business
+            'tenant' => $business
         ]);
     }
 }

@@ -46,9 +46,8 @@ class LocalStagingSeeder extends Seeder
             'subdomain' => 'tech',
             'owner_id' => $ownerId,
             'is_active' => true,
-            'subscription_status' => 'Active',
-            'subscription_ends_at' => now()->addDays(30),
-            'subscription_expires_at' => now()->addDays(30),
+            'status' => 'active',
+            'active_modules' => json_encode(['core_pos', 'core_inventory', 'core_crm', 'core_procurement', 'core_hr', 'core_sales', 'core_finance']),
             'created_at' => now(),
             'updated_at' => now()
         ]);
@@ -120,9 +119,8 @@ class LocalStagingSeeder extends Seeder
             'subdomain' => 'pharma',
             'owner_id' => $ownerId,
             'is_active' => true,
-            'subscription_status' => 'Active',
-            'subscription_ends_at' => now()->addDays(30),
-            'subscription_expires_at' => now()->addDays(30),
+            'status' => 'active',
+            'active_modules' => json_encode(['core_pos', 'core_inventory', 'core_crm', 'core_procurement', 'core_hr', 'core_sales', 'core_finance', 'pharmacy']),
             'created_at' => now(),
             'updated_at' => now()
         ]);
