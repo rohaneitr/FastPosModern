@@ -20,7 +20,7 @@ export function SearchInput({
   className,
 }: SearchInputProps) {
   const [localValue, setLocalValue] = useState(controlledValue || '');
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (controlledValue !== undefined) {

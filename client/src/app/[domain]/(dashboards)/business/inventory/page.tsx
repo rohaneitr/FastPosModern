@@ -21,7 +21,6 @@ export default function InventoryPage() {
     transferStock,
   } = useInventoryData();
 
-  const [activeTab, setActiveTab] = useState('overview');
   const [modalState, setModalState] = useState<'closed' | 'adjust' | 'transfer'>('closed');
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
@@ -74,7 +73,7 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab}>
+      <Tabs defaultValue="overview">
         <div className="glass-card rounded-xl p-2 inline-flex self-start gap-2 flex-wrap border border-border mb-6">
           <TabsList className="bg-transparent gap-2 p-0 h-auto">
             <TabTrigger value="overview" className="px-6 py-2.5 rounded-lg text-sm font-bold data-[state=active]:bg-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-emerald-500/20 data-[state=inactive]:text-text-muted data-[state=inactive]:hover:text-white data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:bg-transparent border-0 transition-all">
