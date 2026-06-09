@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import api from '@/lib/api';
 
 // ── Supported Currencies ──
 export interface CurrencyInfo {
@@ -16,7 +17,7 @@ export const CURRENCIES: CurrencyInfo[] = [
   { code: 'BDT', name: 'Bangladeshi Taka', symbol: '৳', symbolNative: '৳', decimalDigits: 2, nameBn: 'বাংলাদেশি টাকা' },
   { code: 'USD', name: 'US Dollar', symbol: '$', symbolNative: '$', decimalDigits: 2, nameBn: 'মার্কিন ডলার' },
   { code: 'EUR', name: 'Euro', symbol: '€', symbolNative: '€', decimalDigits: 2, nameBn: 'ইউরো' },
-  { code: 'GBP', name: 'British Pound', symbol: '£', symbolNative: '£', decimalDigits: 2, nameBn: 'ব্রিটিশ পাউন্ড' },
+  { code: 'GBP', name: 'British Pound', symbol: '£', symbolNative: '£', decimalDigits: 2, nameBn: ' ব্রিটিশ পাউন্ড' },
   { code: 'INR', name: 'Indian Rupee', symbol: '₹', symbolNative: '₹', decimalDigits: 2, nameBn: 'ভারতীয় রুপি' },
   { code: 'AED', name: 'UAE Dirham', symbol: 'د.إ', symbolNative: 'د.إ', decimalDigits: 2, nameBn: 'আমিরাতি দিরহাম' },
   { code: 'SAR', name: 'Saudi Riyal', symbol: '﷼', symbolNative: 'ر.س', decimalDigits: 2, nameBn: 'সৌদি রিয়াল' },
@@ -34,7 +35,7 @@ export interface CurrencySettings {
 }
 
 const DEFAULT_SETTINGS: CurrencySettings = {
-  code: 'USD',
+  code: 'BDT',
   symbolPosition: 'before',
   decimalPrecision: 2,
   thousandsSeparator: ',',
@@ -48,9 +49,11 @@ export interface ExchangeRateCache {
   lastUpdated: string;
 }
 
+import { Decimal } from './decimal';
+
 // ── Format currency value ──
 export function formatCurrency(
-  amount: number,
+  amount: string | number,
   settings: CurrencySettings,
   currencyOverride?: string
 ): string {
@@ -58,8 +61,9 @@ export function formatCurrency(
   const info = CURRENCIES.find(c => c.code === code);
   const symbol = info?.symbol || code;
 
-  // Format the number
-  const fixed = Math.abs(amount).toFixed(settings.decimalPrecision);
+  // Use Decimal to safely parse and fix precision
+  const decAmount = new Decimal(amount);
+  const fixed = decAmount.abs().toFixed(settings.decimalPrecision);
   const [intPart, decPart] = fixed.split('.');
 
   // Add thousands separator
@@ -78,7 +82,7 @@ export function formatCurrency(
   }
 
   // Add negative sign
-  const sign = amount < 0 ? '-' : '';
+  const sign = decAmount.isNegative() ? '-' : '';
 
   // Position symbol
   if (settings.symbolPosition === 'before') {
@@ -105,7 +109,7 @@ export function convertCurrency(
 interface CurrencyContextType {
   settings: CurrencySettings;
   updateSettings: (partial: Partial<CurrencySettings>) => void;
-  format: (amount: number, currencyOverride?: string) => string;
+  format: (amount: string | number, currencyOverride?: string) => string;
   convert: (amount: number, fromCode: string, toCode?: string) => number;
   rates: Record<string, number>;
   ratesLastUpdated: string | null;
@@ -117,13 +121,13 @@ interface CurrencyContextType {
 const CurrencyContext = createContext<CurrencyContextType>({
   settings: DEFAULT_SETTINGS,
   updateSettings: () => {},
-  format: (amount) => `$${amount.toFixed(2)}`,
+  format: (amount) => `$${new Decimal(amount).toFixed(2)}`,
   convert: (amount) => amount,
   rates: {},
   ratesLastUpdated: null,
   fetchRates: async () => {},
   currencies: CURRENCIES,
-  currentCurrency: CURRENCIES[1], // USD
+  currentCurrency: CURRENCIES[0], // BDT
 });
 
 // ── Provider ──
@@ -131,6 +135,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<CurrencySettings>(DEFAULT_SETTINGS);
   const [rates, setRates] = useState<Record<string, number>>({});
   const [ratesLastUpdated, setRatesLastUpdated] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // Load settings from user/business data
   useEffect(() => {
@@ -143,15 +148,29 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     }
 
-    // Load from user's business data
+    // Load from user's business data or SuperAdmin preference
     const userJson = localStorage.getItem('fastpos_user');
     if (userJson) {
       try {
         const user = JSON.parse(userJson);
-        if (user.business?.currency_code) {
+        const isSuperAdmin = user.roles?.some((r: any) => r.name === 'SuperAdmin' || r.name === 'superadmin');
+        
+        if (user.preferred_currency) {
+          setSettings(prev => ({ ...prev, code: user.preferred_currency }));
+        } else if (isSuperAdmin) {
+          const superAdminCurrency = localStorage.getItem('fpos_superadmin_currency');
+          if (superAdminCurrency) {
+            setSettings(prev => ({ ...prev, code: superAdminCurrency }));
+          }
+        } else if (user.business?.currency_code) {
           setSettings(prev => ({ ...prev, code: user.business.currency_code }));
         }
       } catch {}
+    } else {
+      const superAdminCurrency = localStorage.getItem('fpos_superadmin_currency');
+      if (superAdminCurrency) {
+        setSettings(prev => ({ ...prev, code: superAdminCurrency }));
+      }
     }
 
     // Load cached exchange rates
@@ -163,17 +182,36 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
         setRatesLastUpdated(parsed.lastUpdated);
       } catch {}
     }
+
+    setIsHydrated(true);
   }, []);
 
   const updateSettings = useCallback((partial: Partial<CurrencySettings>) => {
     setSettings(prev => {
       const updated = { ...prev, ...partial };
       localStorage.setItem('fastpos_currency_settings', JSON.stringify(updated));
+      if (partial.code) {
+        localStorage.setItem('fpos_superadmin_currency', partial.code);
+        
+        // Sync with backend profile asynchronously using standardized API
+        api.put('/profile/preferences', { preferred_currency: partial.code })
+          .catch((err: any) => console.error('Failed to sync currency preference', err));
+          
+        // Update local user object cache
+        try {
+          const userJson = localStorage.getItem('fastpos_user');
+          if (userJson) {
+            const user = JSON.parse(userJson);
+            user.preferred_currency = partial.code;
+            localStorage.setItem('fastpos_user', JSON.stringify(user));
+          }
+        } catch {}
+      }
       return updated;
     });
   }, []);
 
-  const format = useCallback((amount: number, currencyOverride?: string) => {
+  const format = useCallback((amount: string | number, currencyOverride?: string) => {
     return formatCurrency(amount, settings, currencyOverride);
   }, [settings]);
 
@@ -185,7 +223,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const fetchRates = useCallback(async () => {
     try {
       // Using exchangerate-api.com (free tier, no key needed for open API)
-      const response = await fetch('https://open.er-api.com/v6/latest/USD');
+      const response = await fetch('https://open.er-api.com/v6/latest/BDT');
       if (response.ok) {
         const data = await response.json();
         if (data.result === 'success' && data.rates) {
@@ -195,7 +233,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
           setRatesLastUpdated(now);
           // Cache locally
           const cache: ExchangeRateCache = {
-            base: 'USD',
+            base: 'BDT',
             rates: newRates,
             lastUpdated: now,
           };
@@ -207,7 +245,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const currentCurrency = CURRENCIES.find(c => c.code === settings.code) || CURRENCIES[1];
+  const currentCurrency = CURRENCIES.find(c => c.code === settings.code) || CURRENCIES[0];
 
   return (
     <CurrencyContext.Provider value={{
@@ -220,8 +258,9 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       fetchRates,
       currencies: CURRENCIES,
       currentCurrency,
-    }}>
-      {children}
+    }}
+    >
+      {isHydrated ? children : <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
     </CurrencyContext.Provider>
   );
 }

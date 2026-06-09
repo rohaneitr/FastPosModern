@@ -1,14 +1,19 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
+import { useRateLimitStore } from '../store/useRateLimitStore';
 
-// Use NEXT_PUBLIC_API_URL from .env.local; fall back to localhost:8002.
-// Both the CORS allowed_origins and SANCTUM_STATEFUL_DOMAINS on the server
-// must match whichever origin the browser actually uses, so we read it from
-// one canonical place (the env var) rather than hard-coding it here.
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002/api/v1';
+const getBaseUrl = () => {
+  if (typeof window === 'undefined') {
+    return 'http://backend:8000/api/v1';
+  }
+  return '/api/v1';
+};
+
+const BASE_URL = getBaseUrl();
 
 const api = axios.create({
   baseURL: BASE_URL,
+  withCredentials: true,
   headers: {
     'X-Requested-With': 'XMLHttpRequest',
     'Content-Type': 'application/json',
@@ -17,32 +22,100 @@ const api = axios.create({
   timeout: 15000,
 });
 
-// Request interceptor — attach Bearer token from localStorage on every request
+api.defaults.withCredentials = true;
+api.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
+api.defaults.headers.common['Accept'] = 'application/json';
+
+// Request interceptor — attach hardware hash if present
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('fastpos_token');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+    const hwHash = localStorage.getItem('pos_hardware_hash');
+    if (hwHash) {
+      config.headers['X-Hardware-Hash'] = hwHash;
     }
   }
   return config;
 });
 
-// Response interceptor — auto-logout on 401
-// Storage is cleared BEFORE the redirect to prevent a race condition where
-// the login page's useEffect sees a stale token and tries to re-redirect.
+// Response interceptor — handle 401 (auto-logout) and 402 (subscription wall)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 && typeof window !== 'undefined') {
-      // Don't redirect if we're already making a login request
-      const isLoginRequest = error.config?.url?.includes('/login');
-      if (!isLoginRequest) {
+    if (typeof window === 'undefined') return Promise.reject(error);
+
+    const status = error.response?.status;
+    const dataCode = error.response?.data?.code || error.response?.data?.error_code;
+
+    // ── DEVICE REVOKED: Hard logout if the device session is kicked ──
+    if (dataCode === 'DEVICE_REVOKED') {
+      localStorage.removeItem('fastpos_token');
+      localStorage.removeItem('fastpos_user');
+      localStorage.removeItem('pos_license_key');
+      localStorage.removeItem('pos_hardware_hash');
+      sessionStorage.removeItem('fastpos_token');
+      sessionStorage.removeItem('fastpos_user');
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login?reason=device_revoked';
+      }
+      return Promise.reject(error);
+    }
+
+    // ── 403: Global RBAC Forbidden Handler ──
+    if (status === 403) {
+      if (typeof window !== 'undefined') {
+        window.location.href = '/unauthorized';
+      }
+      return Promise.reject(error);
+    }
+
+    // ── 401 & 419: session expired or CSRF mismatch → clear storage and redirect to login ──────────
+    if (status === 401 || status === 419) {
+      const isLoginEndpoint = error.config?.url?.includes('/login');
+      const isOnLoginPage = window.location.pathname.includes('/login');
+      
+      if (!isLoginEndpoint && !isOnLoginPage) {
+        sessionStorage.removeItem('fastpos_token');
+        sessionStorage.removeItem('fastpos_user');
         localStorage.removeItem('fastpos_token');
         localStorage.removeItem('fastpos_user');
         window.location.href = '/login';
       }
     }
+
+    // ── 402: subscription issue → redirect to billing suspended ──────────────
+    if (status === 402) {
+      const errorCode: string = error.response?.data?.error_code ?? 'SUBSCRIPTION_REQUIRED';
+      // Store the reason so the settings page can display it as a banner
+      sessionStorage.setItem('fastpos_402_code', errorCode);
+      
+      const isBillingPage = window.location.pathname.includes('/billing');
+      if (!isBillingPage) {
+        window.location.href = '/business/billing';
+      }
+    }
+
+    // ── 503: maintenance mode ──────────────
+    if (status === 503) {
+      if (!window.location.pathname.includes('/maintenance')) {
+        window.location.href = '/maintenance';
+      }
+    }
+
+    // ── 429: Rate Limiting ──────────────
+    if (status === 429) {
+      const retryAfter = error.response?.headers?.['retry-after'];
+      const seconds = retryAfter ? parseInt(retryAfter, 10) : 60;
+      
+      if (typeof window !== 'undefined') {
+        toast.error(`Too many requests. Please try again in ${seconds} seconds.`, {
+          duration: 5000,
+          id: 'rate-limit-toast', // Prevents duplicate toasts
+        });
+        
+        useRateLimitStore.getState().setRateLimited(seconds);
+      }
+    }
+
     return Promise.reject(error);
   }
 );

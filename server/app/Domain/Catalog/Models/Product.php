@@ -2,12 +2,14 @@
 
 namespace App\Domain\Catalog\Models;
 
-use App\Domain\Tenant\Models\TenantModel;
+use App\Modules\Tenant\Models\TenantModel;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class Product extends TenantModel
 {
-    use SoftDeletes;
+    use SoftDeletes, LogsActivity;
 
     protected $guarded = ['id'];
 
@@ -15,6 +17,13 @@ class Product extends TenantModel
         'enable_stock' => 'boolean',
         'attributes' => 'array',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logUnguarded()
+            ->logOnlyDirty();
+    }
 
     public function unit()
     {

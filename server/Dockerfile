@@ -4,8 +4,8 @@ FROM php:8.4-cli
 # Install system packages
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
-        libsqlite3-dev unzip curl git \
-    && docker-php-ext-install pdo pdo_sqlite pcntl \
+        libsqlite3-dev unzip curl git libgmp-dev libzip-dev libpq-dev \
+    && docker-php-ext-install pdo pdo_sqlite pcntl bcmath gmp zip pdo_pgsql pgsql \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Composer globally

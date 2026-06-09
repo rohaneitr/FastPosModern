@@ -17,11 +17,22 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             '*',
         ]);
+        $middleware->append(\App\Http\Middleware\ActivityLogger::class);
+        $middleware->append(\App\Http\Middleware\SaaSMaintenanceMode::class);
+        $middleware->append(\App\Http\Middleware\EnsureLicenseIsActive::class);
+        $middleware->api(prepend: [
+            \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+        ], append: [
+            \App\Http\Middleware\IdleTimeoutMiddleware::class,
+            \App\Http\Middleware\GlobalSecuritySanitizer::class,
+        ]);
         $middleware->alias([
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'subscribed' => \App\Http\Middleware\CheckSubscription::class,
+            'module' => \App\Http\Middleware\EnforceTenantModuleAccess::class,
+            'module.access' => \App\Http\Middleware\CheckModuleAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

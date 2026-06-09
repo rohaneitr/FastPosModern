@@ -2,11 +2,45 @@
 
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import BulkMessageModal from '@/components/BulkMessageModal';
 
 export default function SuperadminPage() {
   const [businesses, setBusinesses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Modules Modal State
+  const [showModulesModal, setShowModulesModal] = useState(false);
+  const [activeModules, setActiveModules] = useState<string[]>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
+
+  // Billing Modal State
+  const [showBillingModal, setShowBillingModal] = useState(false);
+  const [billingForm, setBillingForm] = useState({ duration: '1_month', status: 'Active' });
+  
+  // Create Tenant State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', owner_email: '', password: '', plan_id: '', subdomain: '' });
+  const [plans, setPlans] = useState<any[]>([]);
+
+  // Bulk Messaging
+  const [showBulkMessageModal, setShowBulkMessageModal] = useState(false);
+  
+  const [submitting, setSubmitting] = useState(false);
+  const AVAILABLE_MODULES = [
+    { id: 'pos', label: 'Point of Sale' },
+    { id: 'inventory', label: 'Inventory Management' },
+    { id: 'accounting', label: 'Accounting' },
+    { id: 'advanced_hr', label: 'Advanced HR & Payroll' },
+    { id: 'quotations', label: 'Quotations' },
+    { id: 'warranty', label: 'Warranty & Serials' },
+    { id: 'pc_builder', label: 'PC Builder Engine' },
+    { id: 'cctv_builder', label: 'CCTV Builder Engine' },
+    { id: 'sms_gateway', label: 'SMS/WhatsApp Gateway' },
+    { id: 'mobile_api', label: 'Mobile API' },
+    { id: 'multi_location', label: 'Multi-Location' },
+    { id: 'pharmacy', label: 'Pharmacy Module' }
+  ];
+
   // Search and Filter State
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -34,7 +68,15 @@ export default function SuperadminPage() {
 
   useEffect(() => {
     fetchBusinesses();
+    fetchPlans();
   }, [currentPage]);
+
+  const fetchPlans = async () => {
+    try {
+      const res = await api.get('/superadmin/plans');
+      setPlans(res.data);
+    } catch (e) {}
+  };
 
   const fetchBusinesses = async () => {
     setLoading(true);
@@ -66,6 +108,157 @@ export default function SuperadminPage() {
     } catch (err) {
       showToast('Failed to toggle tenant status. Check permissions.', 'error');
       console.error(err);
+    }
+  };
+
+  const handleOpenModules = (b: any) => {
+    setSelectedTenantId(b.id);
+    setActiveModules(b.active_modules || ['pos', 'inventory']);
+    setShowModulesModal(true);
+  };
+
+  const handleSaveModules = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await api.put(`/superadmin/businesses/${selectedTenantId}/modules`, { active_modules: activeModules });
+      showToast('Modules updated successfully', 'success');
+      setShowModulesModal(false);
+      fetchBusinesses();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to update modules', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOpenBilling = (b: any) => {
+    setSelectedTenantId(b.id);
+    setBillingForm({ duration: '1_month', status: b.subscription_status || 'Active' });
+    setShowBillingModal(true);
+  };
+
+  const handleRenewSubscription = async () => {
+    setSubmitting(true);
+    try {
+      await api.post(`/superadmin/businesses/${selectedTenantId}/subscription/renew`, { duration: billingForm.duration });
+      showToast('Subscription renewed successfully', 'success');
+      setShowBillingModal(false);
+      fetchBusinesses();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to renew subscription', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOverrideStatus = async () => {
+    setSubmitting(true);
+    try {
+      await api.post(`/superadmin/businesses/${selectedTenantId}/subscription/override`, { status: billingForm.status });
+      showToast('Subscription status overridden', 'success');
+      setShowBillingModal(false);
+      fetchBusinesses();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to override status', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCreateTenant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await api.post('/superadmin/businesses', createForm);
+      showToast('Tenant created successfully', 'success');
+      setShowCreateModal(false);
+      setCreateForm({ name: '', owner_email: '', password: '', plan_id: '', subdomain: '' });
+      fetchBusinesses();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to create tenant', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleImpersonate = async (b: any) => {
+    try {
+      showToast('Initiating God Mode...', 'success');
+      const res = await api.post(`/superadmin/impersonate/${b.id}`);
+      // Set up the impersonation state
+      sessionStorage.setItem('fastpos_user', JSON.stringify(res.data.user));
+      
+      const domainPrefix = b.subdomain;
+      const host = window.location.host;
+      let newHost = host;
+      
+      // Simple parsing: if localhost:3000 -> tenant.localhost:3000
+      // If superadmin.domain.com -> tenant.domain.com
+      if (host.includes('localhost')) {
+         newHost = `${domainPrefix}.localhost:3000`;
+      } else {
+         const parts = host.split('.');
+         if (parts.length > 2) {
+            parts[0] = domainPrefix;
+            newHost = parts.join('.');
+         } else {
+            newHost = `${domainPrefix}.${host}`;
+         }
+      }
+      
+      window.location.href = `${window.location.protocol}//${newHost}/business`;
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to impersonate', 'error');
+    }
+  };
+
+  const handleExport = async (id: number, name: string) => {
+    try {
+      showToast('Preparing backup...', 'success');
+      const res = await api.get(`/superadmin/businesses/${id}/export`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `backup_${name.replace(/[^A-Za-z0-9]/g, '_')}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err: any) {
+      showToast('Failed to export tenant data', 'error');
+    }
+  };
+
+  const handleGenerateLicense = async (b: any) => {
+    if (!b.plan_id) {
+        showToast('This tenant does not have a subscription plan attached.', 'error');
+        return;
+    }
+    setSubmitting(true);
+    try {
+      showToast('Generating License Code...', 'success');
+      const res = await api.post(`/superadmin/licenses/generate`, { tenant_id: b.id, plan_id: b.plan_id });
+      // We can prompt it directly
+      prompt('License Generated! Please copy this License Code and securely deliver it to the tenant:', res.data.license_key);
+      fetchBusinesses();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to generate license', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you absolutely sure you want to PERMANENTLY delete this tenant and ALL associated data? This action cannot be undone.')) return;
+    try {
+      setSubmitting(true);
+      await api.delete(`/superadmin/businesses/${id}`);
+      showToast('Tenant permanently deleted', 'success');
+      fetchBusinesses();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to delete tenant', 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -107,7 +300,11 @@ export default function SuperadminPage() {
             <svg className="w-4 h-4 text-text-muted group-hover:text-fuchsia-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
             Manage Packages
           </button>
-          <button onClick={() => showToast('Tenant creation API not yet connected', 'error')} className="flex-1 md:flex-none bg-gradient-to-r from-fuchsia-500 to-indigo-500 hover:from-fuchsia-400 hover:to-indigo-400 text-white px-6 py-2.5 rounded-xl shadow-[0_0_20px_rgba(192,38,211,0.3)] font-bold transition-all flex items-center justify-center gap-2 transform hover:scale-105 active:scale-95">
+          <button onClick={() => setShowBulkMessageModal(true)} className="flex-1 md:flex-none bg-primary/20 text-primary hover:bg-primary/30 border border-primary/30 px-5 py-2.5 rounded-xl font-medium transition-all shadow-sm flex items-center justify-center gap-2 group">
+            <svg className="w-4 h-4 text-primary group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+            Send Bulk Message
+          </button>
+          <button onClick={() => setShowCreateModal(true)} className="flex-1 md:flex-none bg-fuchsia-600 hover:bg-fuchsia-500 text-white shadow-lg shadow-fuchsia-500/20 px-5 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 active:scale-95">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
             New Tenant
           </button>
@@ -202,6 +399,14 @@ export default function SuperadminPage() {
                           <div>
                             <div className="font-bold text-base text-white group-hover:text-fuchsia-400 transition-colors">{b.business_name}</div>
                             <div className="text-xs text-text-muted mt-0.5">ID: {b.id}</div>
+                            {b.url && (
+                              <div className="flex items-center gap-2 mt-1.5 bg-surface/50 border border-border/50 rounded-md px-2 py-1 w-fit">
+                                <a href={b.url} target="_blank" rel="noreferrer" className="text-[10px] font-mono text-blue-400 hover:text-blue-300 hover:underline">{b.url}</a>
+                                <button onClick={() => { navigator.clipboard.writeText(b.url); showToast('URL Copied', 'success'); }} className="text-text-muted hover:text-white" title="Copy URL">
+                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -227,28 +432,99 @@ export default function SuperadminPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
-                          ${isActive 
-                            ? 'bg-success/10 text-success border-success/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]' 
-                            : 'bg-danger/10 text-danger border-danger/20'
-                          }`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-success animate-pulse' : 'bg-danger'}`}></span>
-                          {isActive ? 'Active' : 'Suspended'}
-                        </span>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1.5 items-center w-28 mx-auto">
+                          {/* 1. Tenant Status */}
+                          <span className={`w-full inline-flex justify-center items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border
+                            ${(b.status === 'active' || isActive) 
+                              ? 'bg-success/10 text-success border-success/20' 
+                              : 'bg-warning/10 text-warning border-warning/20'
+                            }`}
+                          >
+                            <span className={`w-1 h-1 rounded-full ${(b.status === 'active' || isActive) ? 'bg-success' : 'bg-warning'}`}></span>
+                            {(b.status === 'active' || isActive) ? 'Active' : (b.status || 'Suspended')}
+                          </span>
+                          
+                          {/* 2. Subscription */}
+                          <span className={`w-full inline-flex justify-center items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border
+                            ${(b.subscription_expires_at && new Date(b.subscription_expires_at) > new Date()) || isLifetime
+                              ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            }`}
+                          >
+                            {(b.subscription_expires_at && new Date(b.subscription_expires_at) > new Date()) || isLifetime ? 'Subscribed' : 'Expired'}
+                          </span>
+
+                          {/* 3. License */}
+                          <span className={`w-full inline-flex justify-center items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border
+                            ${b.license_key 
+                              ? 'bg-teal-500/10 text-teal-400 border-teal-500/20' 
+                              : 'bg-surface text-text-muted border-border'
+                            }`}
+                          >
+                            {b.license_key ? 'Licensed' : 'Unlicensed'}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button 
-                          onClick={() => handleToggle(b.id)}
-                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all transform hover:scale-105 active:scale-95 shadow-sm ${
-                            isActive 
-                              ? 'bg-surface hover:bg-danger/20 text-text-muted hover:text-danger-400 border border-border hover:border-danger/30' 
-                              : 'bg-success/10 hover:bg-success/20 text-success-400 border border-success/30'
-                          }`}
-                        >
-                          {isActive ? 'Suspend' : 'Activate Tenant'}
-                        </button>
+                        <div className="flex justify-end gap-1.5 flex-wrap max-w-[250px] ml-auto">
+                          {b.subscription_status === 'pending_activation' && (
+                            <button 
+                              onClick={() => handleGenerateLicense(b)}
+                              className="px-3 py-1.5 bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-md w-full mb-1 flex items-center justify-center gap-2"
+                              title="Generate License"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+                              Generate License
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => handleImpersonate(b)}
+                            className="px-3 py-1.5 bg-gradient-to-r from-red-500/10 to-orange-500/10 hover:from-red-500/20 hover:to-orange-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold transition-all shadow-sm"
+                            title="Impersonate"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          </button>
+                          <button 
+                            onClick={() => handleExport(b.id, b.business_name)}
+                            className="px-3 py-1.5 bg-surface hover:bg-surface/80 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-bold transition-all shadow-sm"
+                            title="Export Backup"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                          </button>
+                          <button 
+                            onClick={() => handleOpenBilling(b)}
+                            className="px-3 py-1.5 bg-surface hover:bg-surface/80 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-bold transition-all shadow-sm"
+                            title="Billing"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                          </button>
+                          <button 
+                            onClick={() => handleOpenModules(b)}
+                            className="px-3 py-1.5 bg-surface hover:bg-surface/80 text-fuchsia-400 border border-fuchsia-500/30 rounded-lg text-xs font-bold transition-all shadow-sm"
+                            title="Features"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                          </button>
+                          <button 
+                            onClick={() => handleToggle(b.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                              isActive 
+                                ? 'bg-surface hover:bg-yellow-500/20 text-text-muted hover:text-yellow-400 border border-border hover:border-yellow-500/30' 
+                                : 'bg-success/10 hover:bg-success/20 text-success-400 border border-success/30'
+                            }`}
+                            title={isActive ? "Suspend" : "Activate"}
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isActive ? "M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" : "M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"} /></svg>
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(b.id)}
+                            className="px-3 py-1.5 bg-danger/10 hover:bg-danger/20 text-danger-400 border border-danger/30 rounded-lg text-xs font-bold transition-all shadow-sm"
+                            title="Hard Delete"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -285,6 +561,157 @@ export default function SuperadminPage() {
           </div>
         )}
       </div>
+
+      {/* Manage Modules Modal */}
+      {showModulesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-surface border border-border w-full max-w-md rounded-2xl shadow-2xl p-6 relative">
+            <button onClick={() => setShowModulesModal(false)} className="absolute top-4 right-4 text-text-muted hover:text-white">✕</button>
+            <h2 className="text-2xl font-bold text-white mb-2">Manage SaaS Features</h2>
+            <p className="text-text-muted text-sm mb-6">Toggle premium modules for this tenant.</p>
+            
+            <form onSubmit={handleSaveModules} className="flex flex-col gap-4">
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                {AVAILABLE_MODULES.map(mod => (
+                  <label key={mod.id} className="flex items-center gap-3 p-3 bg-background border border-border rounded-xl cursor-pointer hover:border-primary/50 transition-colors">
+                    <input 
+                      type="checkbox" 
+                      className="w-5 h-5 accent-fuchsia-500 rounded bg-surface border-border" 
+                      checked={activeModules.includes(mod.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) setActiveModules([...activeModules, mod.id]);
+                        else setActiveModules(activeModules.filter(m => m !== mod.id));
+                      }}
+                    />
+                    <span className="font-semibold text-white">{mod.label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex justify-end gap-3 mt-4">
+                <button type="button" onClick={() => setShowModulesModal(false)} className="px-5 py-2.5 rounded-lg text-text-muted hover:text-white font-medium">Cancel</button>
+                <button type="submit" disabled={submitting} className="bg-gradient-to-r from-fuchsia-500 to-indigo-500 hover:from-fuchsia-400 hover:to-indigo-400 text-white px-6 py-2.5 rounded-lg font-bold shadow-lg disabled:opacity-50">
+                  {submitting ? 'Saving...' : 'Save Features'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Billing & Subscription Modal */}
+      {showBillingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-surface border border-border w-full max-w-md rounded-2xl shadow-2xl p-6 relative">
+            <button onClick={() => setShowBillingModal(false)} className="absolute top-4 right-4 text-text-muted hover:text-white">✕</button>
+            <h2 className="text-2xl font-bold text-white mb-2">Subscription & Billing</h2>
+            <p className="text-text-muted text-sm mb-6">Manage billing lifecycle for this tenant.</p>
+            
+            <div className="flex flex-col gap-6">
+              {/* Renew Section */}
+              <div className="bg-background border border-border p-4 rounded-xl flex flex-col gap-3">
+                <h3 className="font-bold text-white text-sm">Renew Subscription</h3>
+                <div className="flex gap-2">
+                  <select 
+                    value={billingForm.duration}
+                    onChange={(e) => setBillingForm({...billingForm, duration: e.target.value})}
+                    className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500/50"
+                  >
+                    <option value="1_month">+1 Month</option>
+                    <option value="1_year">+1 Year</option>
+                  </select>
+                  <button 
+                    onClick={handleRenewSubscription} disabled={submitting}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold transition-colors disabled:opacity-50"
+                  >
+                    Renew
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Override Section */}
+              <div className="bg-background border border-border p-4 rounded-xl flex flex-col gap-3">
+                <h3 className="font-bold text-white text-sm">Override Status</h3>
+                <div className="flex gap-2">
+                  <select 
+                    value={billingForm.status}
+                    onChange={(e) => setBillingForm({...billingForm, status: e.target.value})}
+                    className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-white outline-none focus:border-orange-500/50"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Expired">Expired</option>
+                    <option value="Suspended">Suspended</option>
+                  </select>
+                  <button 
+                    onClick={handleOverrideStatus} disabled={submitting}
+                    className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold transition-colors disabled:opacity-50"
+                  >
+                    Override
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end mt-6">
+              <button onClick={() => setShowBillingModal(false)} className="px-5 py-2 rounded-lg bg-surface hover:bg-surface/80 text-white font-medium">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Tenant Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-surface border border-border w-full max-w-md rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <button onClick={() => setShowCreateModal(false)} className="absolute top-4 right-4 text-text-muted hover:text-white">✕</button>
+            <h2 className="text-2xl font-bold text-white mb-2">Create New Tenant</h2>
+            <p className="text-text-muted text-sm mb-6">Provision a new SaaS tenant account.</p>
+            
+            <form onSubmit={handleCreateTenant} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-text-muted">Business Name *</label>
+                <input required value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="bg-background border border-border rounded-lg px-4 py-2.5 text-white outline-none focus:border-primary/50" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-text-muted">Owner Email *</label>
+                <input required type="email" value={createForm.owner_email} onChange={e => setCreateForm({...createForm, owner_email: e.target.value})} className="bg-background border border-border rounded-lg px-4 py-2.5 text-white outline-none focus:border-primary/50" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-text-muted">Temporary Password *</label>
+                <input required type="password" value={createForm.password} onChange={e => setCreateForm({...createForm, password: e.target.value})} className="bg-background border border-border rounded-lg px-4 py-2.5 text-white outline-none focus:border-primary/50" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-text-muted">Subdomain (Optional)</label>
+                <input value={createForm.subdomain} onChange={e => setCreateForm({...createForm, subdomain: e.target.value})} className="bg-background border border-border rounded-lg px-4 py-2.5 text-white outline-none focus:border-primary/50" placeholder="mybusiness" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-text-muted">Select Subscription Plan *</label>
+                <select required value={createForm.plan_id} onChange={e => setCreateForm({...createForm, plan_id: e.target.value})} className="bg-background border border-border rounded-lg px-4 py-2.5 text-white outline-none focus:border-primary/50">
+                  <option value="">Select a plan</option>
+                  {plans.map(p => <option key={p.id} value={p.id}>{p.name} - {p.price}/{p.interval}</option>)}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-4">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="px-5 py-2.5 rounded-lg text-text-muted hover:text-white font-medium">Cancel</button>
+                <button type="submit" disabled={submitting} className="bg-gradient-to-r from-fuchsia-500 to-indigo-500 hover:from-fuchsia-400 hover:to-indigo-400 text-white px-6 py-2.5 rounded-lg font-bold shadow-lg disabled:opacity-50">
+                  {submitting ? 'Creating...' : 'Create Tenant'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Message Modal */}
+      <BulkMessageModal 
+        isOpen={showBulkMessageModal}
+        onClose={() => setShowBulkMessageModal(false)}
+        users={businesses.filter(b => b.owner_id).map(b => ({
+          id: b.owner_id,
+          name: `${b.name} (Admin)`,
+          email: 'Tenant Admin'
+        }))}
+      />
     </div>
   );
 }

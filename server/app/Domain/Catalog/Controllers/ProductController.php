@@ -128,16 +128,24 @@ class ProductController extends Controller
         ]);
 
         // Fetch product barcodes for rendering
+        $productIds = collect($validated['products'])->pluck('id')->toArray();
+        $products = Product::with(['variations', 'business'])->whereIn('id', $productIds)->get()->keyBy('id');
+
         $printPayload = [];
         foreach ($validated['products'] as $item) {
-            $product = Product::findOrFail($item['id']);
+            $product = $products->get($item['id']);
+            if (!$product) continue;
+            
+            $price = $product->variations->first()->sell_price_inc_tax ?? 0;
+            $businessName = $product->business->name ?? '';
+
             for ($i = 0; $i < $item['labels_count']; $i++) {
                 $printPayload[] = [
                     'name' => $product->name,
                     'sku' => $product->sku,
                     'barcode_type' => $product->barcode_type,
-                    'price' => DB::table('variations')->where('product_id', $product->id)->value('sell_price_inc_tax') ?? 0,
-                    'business_name' => DB::table('businesses')->where('id', $product->business_id)->value('name'),
+                    'price' => $price,
+                    'business_name' => $businessName,
                 ];
             }
         }

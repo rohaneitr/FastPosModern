@@ -1,31 +1,43 @@
 import { create } from 'zustand';
+import { Decimal, formatDecimal } from '../lib/decimal';
 
 export interface CartItem {
   id: number;
   product_id: number;
   variation_id?: number;
   name: string;
-  price: number;
+  price: string | number; // allow receiving string from API
   quantity: number;
+  has_serial_number?: boolean;
+  serial_numbers?: string[];
+  fractional_ratio?: number;
+  dosage_instructions?: string;
+  generic_name?: string;
+  is_medicine?: boolean;
+  unit_conversion_ratio?: number;
 }
 
 interface CartStore {
   items: CartItem[];
-  taxRate: number; // For demo purposes, we will hardcode a 10% tax rate. In reality, it comes from the API.
+  taxRate: string | number;
+  discountRate: string | number;
   
   // Actions
   addItem: (product: any) => void;
   removeItem: (id: number) => void;
   updateQuantity: (id: number, quantity: number) => void;
+  updateItemField: (id: number, field: string, value: any) => void;
   clearCart: () => void;
+  setDiscount: (rate: string | number) => void;
   
-  // Computed (these can be handled as derived state in components, but convenient to have getters if possible, 
-  // though standard Zustand doesn't natively do getters well without middleware. We'll rely on selectors in the component.)
+  // Computed helpers
+  getCartTotal: () => string;
 }
 
-export const useCartStore = create<CartStore>((set) => ({
+export const useCartStore = create<CartStore>((set, get) => ({
   items: [],
-  taxRate: 0.10, // 10%
+  taxRate: '0.1000', // 10%
+  discountRate: '0.0000',
 
   addItem: (product) => set((state) => {
     // Check if item already exists in cart
@@ -45,6 +57,12 @@ export const useCartStore = create<CartStore>((set) => ({
       name: product.name,
       price: product.price,
       quantity: 1,
+      has_serial_number: product.has_serial_number,
+      serial_numbers: [],
+      generic_name: product.generic_name,
+      is_medicine: product.is_medicine,
+      unit_conversion_ratio: product.unit_conversion_ratio,
+      fractional_ratio: 1,
     };
     
     return { items: [...state.items, newItem] };
@@ -60,5 +78,37 @@ export const useCartStore = create<CartStore>((set) => ({
     )
   })),
 
-  clearCart: () => set({ items: [] })
+  updateItemField: (id, field, value) => set((state) => ({
+    items: state.items.map(item => 
+      item.id === id ? { ...item, [field]: value } : item
+    )
+  })),
+
+  clearCart: () => set({ items: [], discountRate: '0.0000' }),
+  
+  setDiscount: (rate) => set({ discountRate: formatDecimal(rate) }),
+  
+  getCartTotal: () => {
+    const state = get();
+    
+    let subtotal = new Decimal(0);
+    for (const item of state.items) {
+      const price = new Decimal(item.price);
+      const quantity = new Decimal(item.quantity);
+      const fractionalRatio = new Decimal(item.fractional_ratio || 1);
+      
+      const lineTotal = price.mul(quantity).mul(fractionalRatio);
+      subtotal = subtotal.add(lineTotal);
+    }
+    
+    const discountRate = new Decimal(state.discountRate);
+    const taxRate = new Decimal(state.taxRate);
+    
+    const discount = subtotal.mul(discountRate);
+    const afterDiscount = subtotal.sub(discount);
+    const tax = afterDiscount.mul(taxRate);
+    const finalTotal = afterDiscount.add(tax);
+    
+    return formatDecimal(finalTotal);
+  }
 }));

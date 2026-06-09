@@ -23,6 +23,13 @@ const notoBengali = Noto_Sans_Bengali({
 export const metadata: Metadata = {
   title: "FastPOS — Modern ERP & Point of Sale",
   description: "Enterprise-grade POS, inventory, and business management platform.",
+  manifest: "/manifest.json",
+  themeColor: "#6366f1",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "FastPOS",
+  },
 };
 
 export default function RootLayout({
