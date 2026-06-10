@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'subscribed', 'module.access:core_crm'])->group(function () {
     Route::middleware('role_or_permission:BusinessAdmin|Cashier')->group(function () {
         Route::apiResource('contacts', \App\Modules\CRM\Controllers\ContactController::class);
+        Route::post('/messages/bulk', [\App\Modules\CRM\Controllers\MessageController::class, 'sendBulk']);
     });
 });
 

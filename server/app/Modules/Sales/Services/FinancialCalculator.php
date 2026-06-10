@@ -38,7 +38,7 @@ class FinancialCalculator
     public static function calculateTax($amount, $taxRate): BigDecimal
     {
         return self::of($amount)
-            ->multipliedBy(self::of($taxRate))
+            ->multipliedBy(self::of($taxRate)->dividedBy(100, self::SCALE, RoundingMode::HALF_UP))
             ->toScale(self::SCALE, RoundingMode::HALF_UP);
     }
 

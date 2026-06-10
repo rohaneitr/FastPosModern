@@ -6,6 +6,7 @@ Route::middleware(['auth:sanctum', 'module.access'])->group(function () {
     // Catalog Domain (Read/Print Access)
     Route::middleware('role_or_permission:BusinessAdmin|InventoryManager|Cashier')->group(function () {
         Route::post('products/print-labels', [\App\Modules\Inventory\Controllers\ProductController::class, 'printLabels']);
+        Route::get('products/{product}/serials', [\App\Modules\Inventory\Controllers\ProductController::class, 'serials']);
         Route::apiResource('products', \App\Modules\Inventory\Controllers\ProductController::class)->only(['index', 'show']);
         Route::apiResource('categories', \App\Modules\Inventory\Controllers\CategoryController::class)->only(['index', 'show']);
         Route::apiResource('brands', \App\Modules\Inventory\Controllers\BrandController::class)->only(['index', 'show']);
@@ -25,5 +26,7 @@ Route::middleware(['auth:sanctum', 'module.access'])->group(function () {
         Route::post('/inventory/adjust', [\App\Modules\Inventory\Controllers\InventoryController::class, 'adjustStock']);
         Route::post('/inventory/transfer', [\App\Modules\Inventory\Controllers\InventoryController::class, 'transferStock']);
         Route::get('/inventory/low-stock', [\App\Modules\Inventory\Controllers\InventoryController::class, 'lowStock']);
+        Route::get('/inventory/history', [\App\Modules\Inventory\Controllers\InventoryController::class, 'history']);
+        Route::get('/inventory/pending-sourcing', [\App\Modules\Inventory\Controllers\InventoryController::class, 'pendingSourcing']);
     });
 });

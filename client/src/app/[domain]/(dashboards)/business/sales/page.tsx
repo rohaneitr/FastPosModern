@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useCartStore } from '@/store/useCartStore';
 
 interface Sale {
   id: number;
@@ -29,6 +30,7 @@ const PAYMENT_METHODS = ['cash', 'card', 'bank_transfer', 'bkash', 'sslcommerz']
 
 export default function SalesHubPage() {
   const router = useRouter();
+  const { clearCart, addItem, updateQuantity } = useCartStore();
   const [sales, setSales] = useState<Sale[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +107,30 @@ export default function SalesHubPage() {
       fetchSales();
     } catch (e: any) {
       showToast(e.response?.data?.message || 'Failed to process return.', 'error');
+    }
+  };
+
+  const handleConvertQuotation = async (sale: Sale) => {
+    try {
+      const res = await api.get(`/invoices/${sale.id}`);
+      const invoiceData = res.data;
+      
+      clearCart();
+      
+      invoiceData.lines?.forEach((line: any) => {
+        addItem({
+          id: line.product_id,
+          name: line.product_name,
+          price: parseFloat(line.unit_price),
+          has_serial_number: false
+        });
+        updateQuantity(line.product_id, parseFloat(line.quantity));
+      });
+      
+      showToast('Quotation loaded into POS!', 'success');
+      router.push('/user/pos');
+    } catch (err: any) {
+      showToast('Failed to load quotation details.', 'error');
     }
   };
 
@@ -287,11 +313,14 @@ export default function SalesHubPage() {
                           ✉️ Email
                         </button>
                         {s.status === 'final' ? (
-                          <button onClick={() => handleProcessReturn(s)} className="text-danger hover:text-red-400 font-medium text-xs px-2 py-1">Return</button>
+                          <>
+                            <button onClick={() => router.push(`/business/sales/${s.id}/invoice`)} className="text-text-muted hover:text-white font-medium text-xs px-2 py-1">View</button>
+                            <button onClick={() => handleProcessReturn(s)} className="text-danger hover:text-red-400 font-medium text-xs px-2 py-1">Return</button>
+                          </>
                         ) : s.status === 'quotation' ? (
-                          <button className="text-primary hover:text-blue-400 font-medium text-xs px-2 py-1">Convert</button>
+                          <button onClick={() => handleConvertQuotation(s)} className="text-primary hover:text-blue-400 font-medium text-xs px-2 py-1">Convert</button>
                         ) : (
-                          <button className="text-text-muted hover:text-white font-medium text-xs px-2 py-1">View</button>
+                          <button onClick={() => router.push(`/business/sales/${s.id}/invoice`)} className="text-text-muted hover:text-white font-medium text-xs px-2 py-1">View</button>
                         )}
                       </div>
                     </td>

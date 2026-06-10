@@ -32,7 +32,7 @@ class SetupLocalTestingEnv extends Command
         $this->info('Step 3: Flushing Application Cache & Redis State...');
         Artisan::call('cache:clear');
         try {
-            Cache::store('redis')->flush();
+            Cache::flush();
         } catch (\Exception $e) {
             $this->warn('Redis cache clear failed (is Redis running?): ' . $e->getMessage());
         }
@@ -79,3 +79,4 @@ class SetupLocalTestingEnv extends Command
         $this->line("Body (JSON): {\"business_id\": 1, \"amount\": 100.00, \"months_added\": 1}");
     }
 }
+

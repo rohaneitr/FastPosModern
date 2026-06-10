@@ -35,6 +35,7 @@ class ConsumeBatchFIFOInventoryAction
             ->whereIn('product_id', $productIds)
             ->where('remaining_qty', '>', 0)
             ->orderBy('product_id')
+            ->orderByRaw('expiry_date IS NULL ASC, expiry_date ASC')
             ->orderBy('created_at', 'asc')
             ->orderBy('id', 'asc')
             ->lockForUpdate()

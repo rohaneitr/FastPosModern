@@ -27,18 +27,14 @@ export default function SuperadminPage() {
   
   const [submitting, setSubmitting] = useState(false);
   const AVAILABLE_MODULES = [
-    { id: 'pos', label: 'Point of Sale' },
-    { id: 'inventory', label: 'Inventory Management' },
-    { id: 'accounting', label: 'Accounting' },
-    { id: 'advanced_hr', label: 'Advanced HR & Payroll' },
-    { id: 'quotations', label: 'Quotations' },
-    { id: 'warranty', label: 'Warranty & Serials' },
-    { id: 'pc_builder', label: 'PC Builder Engine' },
-    { id: 'cctv_builder', label: 'CCTV Builder Engine' },
-    { id: 'sms_gateway', label: 'SMS/WhatsApp Gateway' },
-    { id: 'mobile_api', label: 'Mobile API' },
-    { id: 'multi_location', label: 'Multi-Location' },
-    { id: 'pharmacy', label: 'Pharmacy Module' }
+    { id: 'core', label: 'Core POS & Inventory' },
+    { id: 'crm', label: 'CRM & Loyalty' },
+    { id: 'hr', label: 'HR Management' },
+    { id: 'serial_tracking', label: 'Serial & IMEI Tracking' },
+    { id: 'pharmacy', label: 'Pharmacy Vertical' },
+    { id: 'restaurant', label: 'Restaurant Vertical' },
+    { id: 'hardware_builder', label: 'PC/Hardware Builder' },
+    { id: 'manufacturing', label: 'Manufacturing' }
   ];
 
   // Search and Filter State
@@ -113,7 +109,7 @@ export default function SuperadminPage() {
 
   const handleOpenModules = (b: any) => {
     setSelectedTenantId(b.id);
-    setActiveModules(b.active_modules || ['pos', 'inventory']);
+    setActiveModules(b.active_modules || ['core']);
     setShowModulesModal(true);
   };
 
@@ -121,7 +117,7 @@ export default function SuperadminPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.put(`/superadmin/businesses/${selectedTenantId}/modules`, { active_modules: activeModules });
+      await api.post(`/superadmin/businesses/${selectedTenantId}/modules`, { active_modules: activeModules });
       showToast('Modules updated successfully', 'success');
       setShowModulesModal(false);
       fetchBusinesses();
@@ -155,7 +151,7 @@ export default function SuperadminPage() {
   const handleOverrideStatus = async () => {
     setSubmitting(true);
     try {
-      await api.post(`/superadmin/businesses/${selectedTenantId}/subscription/override`, { status: billingForm.status });
+      await api.post(`/superadmin/businesses/${selectedTenantId}/subscription/override`, { subscription_status: billingForm.status });
       showToast('Subscription status overridden', 'success');
       setShowBillingModal(false);
       fetchBusinesses();

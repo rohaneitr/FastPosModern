@@ -1,5 +1,6 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
+import { GlobalAnnouncement } from '@/components/GlobalAnnouncement';
 
 interface TenantConfig {
   id: number;
@@ -79,8 +80,11 @@ export default async function TenantLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background" data-tenant-id={tenant.id} data-theme-color={tenant.branding?.primary_color}>
-      {children}
+    <div className="min-h-screen bg-background flex flex-col" data-tenant-id={tenant.id} data-theme-color={tenant.branding?.primary_color}>
+      <GlobalAnnouncement />
+      <div className="flex-1">
+        {children}
+      </div>
     </div>
   );
 }

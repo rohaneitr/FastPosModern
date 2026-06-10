@@ -11,6 +11,8 @@ Route::middleware(['auth:sanctum', 'subscribed', 'module.access:core_hr'])->grou
         Route::put('/hr/employees/{id}', [\App\Modules\HR\Controllers\HRController::class, 'updateEmployee']);
         Route::delete('/hr/employees/{id}', [\App\Modules\HR\Controllers\HRController::class, 'deleteEmployee']);
 
+        Route::post('/business/invites', [\App\Modules\HR\Controllers\InviteController::class, 'store']);
+
         Route::get('/hr/payrolls', [\App\Modules\HR\Controllers\HRController::class, 'payrolls']);
         Route::post('/hr/payrolls/generate', [\App\Modules\HR\Controllers\HRController::class, 'generatePayroll']);
         Route::post('/hr/payrolls/{id}/pay', [\App\Modules\HR\Controllers\HRController::class, 'payPayroll']);

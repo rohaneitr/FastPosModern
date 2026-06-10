@@ -5,10 +5,11 @@ import { cn } from '@/lib/utils';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { SidebarItem } from './sidebar-item';
 import type { SidebarMenuItem } from './sidebar-config';
+import { useEntitlements } from '@/hooks/useEntitlements';
 
 export interface SidebarProps {
   items: SidebarMenuItem[];
-  activeModules: string[] | null;
+  activeModules?: string[] | null; // Kept for backwards compatibility if needed
   isCashier: boolean;
   tenantName?: string;
   tenantLogo?: string | null;
@@ -19,7 +20,6 @@ export interface SidebarProps {
 
 export function Sidebar({
   items,
-  activeModules,
   isCashier,
   tenantName,
   tenantLogo,
@@ -27,19 +27,16 @@ export function Sidebar({
   onNavigate,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const { hasModule } = useEntitlements();
 
-  const hasModule = (slugs?: string[]) => {
+  const checkModuleAccess = (slugs?: string[]) => {
     if (!slugs || slugs.length === 0) return true;
-    if (activeModules === null) return true; // Still loading
-    if (!Array.isArray(activeModules)) return false;
-    return slugs.some(slug =>
-      activeModules.some(mod => mod.toLowerCase().includes(slug.toLowerCase()))
-    );
+    return slugs.some(slug => hasModule(slug));
   };
 
   const visibleItems = items.filter(item => {
     if (item.adminOnly && isCashier) return false;
-    if (!hasModule(item.moduleAccess)) return false;
+    if (!checkModuleAccess(item.moduleAccess)) return false;
     return true;
   });
 

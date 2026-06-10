@@ -2,6 +2,8 @@ import { useState } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useCartStore, CartItem } from '@/store/useCartStore';
+import { globalSync } from '@/lib/sync/broadcast';
+import { useEntitlements } from '@/hooks/useEntitlements';
 
 export interface CheckoutPayload {
   location_id: number;
@@ -21,6 +23,8 @@ export interface CheckoutPayload {
     fractional_ratio: number;
     dosage_instructions?: string;
     serial_numbers?: string[];
+    imei_numbers?: string[];
+    warranty_duration?: string;
   }>;
 }
 
@@ -34,6 +38,7 @@ interface UseCheckoutParams {
 export function useCheckout({ locationId, registerIsOpen, onSerialRequired, onSuccess }: UseCheckoutParams) {
   const { items, taxRate } = useCartStore();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const { hasModule } = useEntitlements();
 
   const processCheckout = async (params: {
     paymentMethod: 'cash' | 'bkash' | 'sslcommerz' | 'card' | 'advance';
@@ -60,14 +65,20 @@ export function useCheckout({ locationId, registerIsOpen, onSerialRequired, onSu
     }
 
     // Validate Serial Numbers
-    const itemsMissingSerials = items.filter(
-      (item) => item.has_serial_number && (item.serial_numbers?.length || 0) !== item.quantity
-    );
+    const requiresTracking = hasModule('serial_tracking') || hasModule('advanced_inventory');
     
-    if (itemsMissingSerials.length > 0) {
-      toast.error(`Please select serial numbers for ${itemsMissingSerials[0].name}`);
-      onSerialRequired(itemsMissingSerials[0]);
-      return;
+    if (requiresTracking) {
+      const itemsMissingSerials = items.filter(
+        (item) => (item.enable_sr_no || item.enable_imei) && 
+        ((item.enable_sr_no && (item.serial_numbers?.length || 0) !== item.quantity) || 
+         (item.enable_imei && (item.imei_numbers?.length || 0) !== item.quantity))
+      );
+      
+      if (itemsMissingSerials.length > 0) {
+        toast.error(`Please select serial/IMEI numbers for ${itemsMissingSerials[0].name}`);
+        onSerialRequired(itemsMissingSerials[0]);
+        return;
+      }
     }
 
     setIsCheckingOut(true);
@@ -89,7 +100,9 @@ export function useCheckout({ locationId, registerIsOpen, onSerialRequired, onSu
         price: Number(item.price) * (item.fractional_ratio || 1),
         fractional_ratio: item.fractional_ratio || 1,
         dosage_instructions: item.dosage_instructions || undefined,
-        serial_numbers: item.has_serial_number ? item.serial_numbers : undefined
+        serial_numbers: requiresTracking && item.enable_sr_no ? item.serial_numbers : undefined,
+        imei_numbers: requiresTracking && item.enable_imei ? item.imei_numbers : undefined,
+        warranty_duration: requiresTracking && item.enable_warranty ? item.warranty_duration : undefined
       }))
     };
 
@@ -107,6 +120,11 @@ export function useCheckout({ locationId, registerIsOpen, onSerialRequired, onSu
       };
 
       toast.success(`Sale Successful! Invoice: ${response.data.invoice_no || 'Created'}`);
+      
+      // Notify other tabs to refresh inventory and clear carts
+      globalSync.broadcast('INVENTORY_MUTATED');
+      globalSync.broadcast('CART_CLEARED');
+      
       onSuccess(receiptData);
     } catch (error: any) {
       console.error("Checkout failed", error);

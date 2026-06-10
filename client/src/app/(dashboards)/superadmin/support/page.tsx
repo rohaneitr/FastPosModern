@@ -7,7 +7,8 @@ interface Reply {
   id: number;
   message: string;
   created_at: string;
-  user: { id: number; name: string; email: string };
+  user: { id: number; name: string; email: string } | null;
+  is_admin_reply: boolean;
 }
 
 interface Ticket {
@@ -32,6 +33,10 @@ export default function SuperadminSupportPage() {
   
   // Filter state
   const [statusFilter, setStatusFilter] = useState('all');
+  
+  // Toast
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
   useEffect(() => {
     fetchTickets();
@@ -40,10 +45,10 @@ export default function SuperadminSupportPage() {
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/tickets');
-      if (res.data) setTickets(res.data);
-    } catch (err) {
-      console.error(err);
+      const res = await api.get('/superadmin/tickets');
+      if (res.data && res.data.tickets) setTickets(res.data.tickets.data);
+    } catch (err: any) {
+      showToast(err?.response?.data?.message ?? 'Failed to load support tickets');
     } finally {
       setLoading(false);
     }
@@ -51,10 +56,10 @@ export default function SuperadminSupportPage() {
 
   const openTicket = async (id: number) => {
     try {
-      const res = await api.get(`/tickets/${id}`);
-      setActiveTicket(res.data);
-    } catch (err) {
-      console.error(err);
+      const res = await api.get(`/superadmin/tickets/${id}`);
+      setActiveTicket(res.data.ticket);
+    } catch (err: any) {
+      showToast(err?.response?.data?.message ?? 'Failed to open ticket');
     }
   };
 
@@ -64,16 +69,15 @@ export default function SuperadminSupportPage() {
 
     setReplying(true);
     try {
-      const res = await api.post(`/tickets/${activeTicket.id}/reply`, { message: replyMessage });
+      const res = await api.post(`/superadmin/tickets/${activeTicket.id}/reply`, { message: replyMessage });
       // Optimistic Update
       setActiveTicket(prev => prev ? {
         ...prev,
         replies: [...(prev.replies || []), res.data.reply]
       } : null);
       setReplyMessage('');
-    } catch (err) {
-      console.error(err);
-      alert('Failed to send reply');
+    } catch (err: any) {
+      showToast(err?.response?.data?.message ?? 'Failed to send reply');
     } finally {
       setReplying(false);
     }
@@ -82,28 +86,28 @@ export default function SuperadminSupportPage() {
   const updateStatus = async (status: string) => {
     if (!activeTicket) return;
     try {
-      await api.put(`/tickets/${activeTicket.id}/status`, { status });
+      await api.patch(`/superadmin/tickets/${activeTicket.id}/status`, { status });
       setActiveTicket(prev => prev ? { ...prev, status } : null);
       setTickets(prev => prev.map(t => t.id === activeTicket.id ? { ...t, status } : t));
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      showToast(err?.response?.data?.message ?? 'Failed to update ticket status');
     }
   };
 
   const getPriorityColor = (p: string) => {
     switch (p) {
-      case 'urgent': return 'text-rose-500 bg-rose-500/10 border-rose-500/20';
-      case 'high': return 'text-orange-500 bg-orange-500/10 border-orange-500/20';
-      case 'low': return 'text-slate-400 bg-slate-500/10 border-slate-500/20';
+      case 'Urgent': return 'text-rose-500 bg-rose-500/10 border-rose-500/20';
+      case 'High': return 'text-orange-500 bg-orange-500/10 border-orange-500/20';
+      case 'Low': return 'text-slate-400 bg-slate-500/10 border-slate-500/20';
       default: return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
     }
   };
 
   const getStatusColor = (s: string) => {
     switch (s) {
-      case 'closed': return 'text-slate-400 border-slate-500/20';
-      case 'resolved': return 'text-emerald-400 border-emerald-500/20';
-      case 'in_progress': return 'text-amber-400 border-amber-500/20';
+      case 'Closed': return 'text-slate-400 border-slate-500/20';
+      case 'Resolved': return 'text-emerald-400 border-emerald-500/20';
+      case 'In Progress': return 'text-amber-400 border-amber-500/20';
       default: return 'text-cyan-400 border-cyan-500/20'; // open
     }
   };
@@ -111,7 +115,13 @@ export default function SuperadminSupportPage() {
   const filteredTickets = tickets.filter(t => statusFilter === 'all' || t.status === statusFilter);
 
   return (
-    <div className="flex flex-col h-full gap-8 animate-in fade-in duration-500 pb-12 w-full max-w-7xl mx-auto">
+    <>
+      {toast && (
+        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-xl text-sm font-semibold bg-rose-500/15 border border-rose-500/30 text-rose-300 shadow-2xl animate-in slide-in-from-top-4 duration-300">
+          ❌ {toast}
+        </div>
+      )}
+      <div className="flex flex-col h-full gap-8 animate-in fade-in duration-500 pb-12 w-full max-w-7xl mx-auto">
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-500">
@@ -125,10 +135,10 @@ export default function SuperadminSupportPage() {
             className="bg-surface border border-border rounded-xl px-4 py-2 text-sm text-white outline-none cursor-pointer hover:border-purple-500/50 transition-colors"
           >
             <option value="all">All Statuses</option>
-            <option value="open">Open</option>
-            <option value="in_progress">In Progress</option>
-            <option value="resolved">Resolved</option>
-            <option value="closed">Closed</option>
+            <option value="Open">Open</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Resolved">Resolved</option>
+            <option value="Closed">Closed</option>
           </select>
           <button onClick={fetchTickets} className="p-2.5 rounded-xl bg-surface hover:bg-surface/80 border border-border transition-colors">
             <svg className={`w-4 h-4 text-text-muted ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
@@ -217,10 +227,10 @@ export default function SuperadminSupportPage() {
                   onChange={(e) => updateStatus(e.target.value)}
                   className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-white outline-none cursor-pointer focus:border-purple-500/50"
                 >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
+                  <option value="Open">Open</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Resolved">Resolved</option>
+                  <option value="Closed">Closed</option>
                 </select>
                 <button onClick={() => setActiveTicket(null)} className="p-1.5 rounded-lg hover:bg-white/5 text-text-muted hover:text-white transition-colors">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -231,11 +241,11 @@ export default function SuperadminSupportPage() {
             {/* Thread Body */}
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 custom-scrollbar bg-surface/50">
               {activeTicket.replies?.map((reply, idx) => {
-                const isSuperAdmin = !reply.user || reply.user.id !== activeTicket.user.id; // Rough proxy for is_agent
+                const isSuperAdmin = reply.is_admin_reply;
                 return (
                   <div key={reply.id || idx} className={`flex flex-col max-w-[85%] ${isSuperAdmin ? 'self-end items-end' : 'self-start items-start'}`}>
                     <span className="text-[10px] text-text-muted mb-1 px-1">
-                      {isSuperAdmin ? 'SuperAdmin (You)' : reply.user?.name} • {new Date(reply.created_at).toLocaleString()}
+                      {isSuperAdmin ? 'SuperAdmin (You)' : (reply.user?.name || 'User')} • {new Date(reply.created_at).toLocaleString()}
                     </span>
                     <div className={`p-4 rounded-2xl text-sm shadow-md ${isSuperAdmin ? 'bg-purple-600/20 border border-purple-500/30 text-purple-50 rounded-tr-sm' : 'bg-background border border-border text-text-muted rounded-tl-sm'}`}>
                       {reply.message}
@@ -262,5 +272,6 @@ export default function SuperadminSupportPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

@@ -118,4 +118,29 @@ class ProductController extends Controller
             return response()->json(['message' => 'Internal Server Error', 'error' => $e->getMessage()], 500);
         }
     }
+
+    public function serials(Product $product)
+    {
+        try {
+            $serials = DB::table('inventory_item_serials')
+                ->where('product_id', $product->id)
+                ->where('status', 'Available')
+                ->get();
+            
+            $available = $serials->map(function ($item) {
+                if (!empty($item->serial_number)) {
+                    return $item->serial_number;
+                }
+                if (!empty($item->imei_number)) {
+                    return $item->imei_number;
+                }
+                return null;
+            })->filter()->values()->toArray();
+
+            return response()->json($available);
+        } catch (\Throwable $e) {
+            Log::error('Error fetching serials: ' . $e->getMessage());
+            return response()->json(['message' => 'Internal Server Error', 'error' => $e->getMessage()], 500);
+        }
+    }
 }

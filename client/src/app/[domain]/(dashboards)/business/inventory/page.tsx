@@ -7,10 +7,19 @@ import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { useInventoryData } from '@/lib/queries/use-inventory-data';
 import { StockTable } from '@/features/inventory/components/stock-table';
+import { HistoryTable } from '@/features/inventory/components/history-table';
+import { SourcingTable } from '@/features/inventory/components/sourcing-table';
 import { AdjustStockModal } from '@/features/inventory/components/adjust-stock-modal';
 import { TransferStockModal } from '@/features/inventory/components/transfer-stock-modal';
+import useSWR from 'swr';
+import api from '@/lib/api';
+
+const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 export default function InventoryPage() {
+  const { data: historyData, isLoading: isHistoryLoading } = useSWR('/inventory/history', fetcher);
+  const { data: sourcingData, isLoading: isSourcingLoading } = useSWR('/inventory/pending-sourcing', fetcher);
+
   const {
     filteredStocks,
     isLoading,
@@ -85,6 +94,9 @@ export default function InventoryPage() {
             <TabTrigger value="transfers" className="px-6 py-2.5 rounded-lg text-sm font-bold data-[state=active]:bg-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-emerald-500/20 data-[state=inactive]:text-text-muted data-[state=inactive]:hover:text-white data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:bg-transparent border-0 transition-all">
               Stock Transfers
             </TabTrigger>
+            <TabTrigger value="sourcing" className="px-6 py-2.5 rounded-lg text-sm font-bold data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-amber-500/20 data-[state=inactive]:text-text-muted data-[state=inactive]:hover:text-white data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:bg-transparent border-0 transition-all">
+              Pending Sourcing
+            </TabTrigger>
           </TabsList>
         </div>
 
@@ -107,12 +119,9 @@ export default function InventoryPage() {
                 <h2 className="text-xl font-bold text-white">Recent Adjustments</h2>
                 <Button size="sm" onClick={() => handleOpenModal('adjust')}>+ New Adjustment</Button>
               </div>
-              <StockTable
-                stocks={filteredStocks}
-                isLoading={isLoading}
-                onAdjust={(product) => handleOpenModal('adjust', product)}
-                onTransfer={(product) => handleOpenModal('transfer', product)}
-                showSearch={false}
+              <HistoryTable 
+                logs={historyData?.filter((log: any) => log.event_type !== 'Transfer') || []} 
+                isLoading={isHistoryLoading} 
               />
             </TabContent>
 
@@ -121,12 +130,19 @@ export default function InventoryPage() {
                 <h2 className="text-xl font-bold text-white">Stock Transfers</h2>
                 <Button size="sm" onClick={() => handleOpenModal('transfer')}>+ New Transfer</Button>
               </div>
-              <StockTable
-                stocks={filteredStocks}
-                isLoading={isLoading}
-                onAdjust={(product) => handleOpenModal('adjust', product)}
-                onTransfer={(product) => handleOpenModal('transfer', product)}
-                showSearch={false}
+              <HistoryTable 
+                logs={historyData?.filter((log: any) => log.event_type === 'Transfer') || []} 
+                isLoading={isHistoryLoading} 
+              />
+            </TabContent>
+
+            <TabContent value="sourcing" className="mt-0 outline-none">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-white">Pending Sourcing (Shopping List)</h2>
+              </div>
+              <SourcingTable 
+                logs={sourcingData || []} 
+                isLoading={isSourcingLoading} 
               />
             </TabContent>
           </ErrorBoundary>

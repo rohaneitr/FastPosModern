@@ -1,16 +1,50 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Tabs, TabsList, TabTrigger, TabContent } from '@/components/ui/tabs';
 import { DateRangeProvider, useDateRange } from '@/features/reports/components/date-range-provider';
 import { ProfitAndLossReport } from '@/features/reports/components/profit-and-loss-report';
 import toast from 'react-hot-toast';
+import useSWR from 'swr';
+import api from '@/lib/api';
+
+const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 function ReportsDashboard() {
   const { startDate, endDate, setStartDate, setEndDate } = useDateRange();
+  const [isExporting, setIsExporting] = useState(false);
 
-  const handleExport = () => {
-    toast.error('Server-side PDF Export coming in next phase.');
+  // Data fetching
+  const { data: salesData, error: salesError } = useSWR(
+    `/reports/sales?start_date=${startDate}&end_date=${endDate}`,
+    fetcher
+  );
+
+  const { data: inventoryData, error: inventoryError } = useSWR(
+    `/reports/inventory-valuation`,
+    fetcher
+  );
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    const toastId = toast.loading('Generating Sales PDF Report...');
+    try {
+      const response = await api.get(`/reports/sales/export-pdf?start_date=${startDate}&end_date=${endDate}`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `sales_report_${new Date().getTime()}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success('PDF Downloaded successfully!', { id: toastId });
+    } catch (error) {
+      toast.error('Failed to export PDF.', { id: toastId });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -42,9 +76,10 @@ function ReportsDashboard() {
           <div className="w-px h-6 bg-border mx-1"></div>
           <button 
             onClick={handleExport}
-            className="bg-primary/20 text-primary hover:bg-primary hover:text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors"
+            disabled={isExporting}
+            className="bg-primary/20 text-primary hover:bg-primary hover:text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
           >
-            Export PDF
+            {isExporting ? 'Exporting...' : 'Export PDF'}
           </button>
         </div>
       </div>
@@ -68,13 +103,68 @@ function ReportsDashboard() {
           <ProfitAndLossReport />
         </TabContent>
         <TabContent value="sales">
-          <div className="glass-card p-12 text-center rounded-xl border border-border text-text-muted">
-            Sales Summary Report Generation under construction.
+          <div className="glass-card rounded-xl border border-border p-6 min-h-[400px]">
+            <h2 className="text-xl font-bold text-white mb-4">Daily Sales Summary</h2>
+            {!salesData && !salesError ? <div className="text-center p-8 text-text-muted">Loading sales data...</div> : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-surface/50 border-b border-border">
+                    <tr>
+                      <th className="p-4 font-semibold text-text-muted">Date</th>
+                      <th className="p-4 font-semibold text-text-muted text-right">Transactions</th>
+                      <th className="p-4 font-semibold text-text-muted text-right">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salesData?.map((row: any) => (
+                      <tr key={row.date} className="border-b border-border/50 hover:bg-white/5">
+                        <td className="p-4 font-mono">{row.date}</td>
+                        <td className="p-4 text-right">{row.total_transactions}</td>
+                        <td className="p-4 text-right text-emerald-400 font-bold">${parseFloat(row.daily_total).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                    {(!salesData || salesData.length === 0) && (
+                      <tr><td colSpan={3} className="p-8 text-center text-text-muted">No sales in this period.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </TabContent>
         <TabContent value="inventory">
-          <div className="glass-card p-12 text-center rounded-xl border border-border text-text-muted">
-            Inventory Valuation Report Generation under construction.
+          <div className="glass-card rounded-xl border border-border p-6 min-h-[400px]">
+            <h2 className="text-xl font-bold text-white mb-4">Stock Valuation</h2>
+            {!inventoryData && !inventoryError ? <div className="text-center p-8 text-text-muted">Loading inventory data...</div> : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-surface/50 border-b border-border">
+                    <tr>
+                      <th className="p-4 font-semibold text-text-muted">Product / SKU</th>
+                      <th className="p-4 font-semibold text-text-muted">Category</th>
+                      <th className="p-4 font-semibold text-text-muted text-right">Qty</th>
+                      <th className="p-4 font-semibold text-text-muted text-right">Cost Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventoryData?.map((item: any) => (
+                      <tr key={item.sku} className="border-b border-border/50 hover:bg-white/5">
+                        <td className="p-4">
+                          <div className="font-semibold text-white">{item.name}</div>
+                          <div className="text-xs text-text-muted">{item.sku}</div>
+                        </td>
+                        <td className="p-4 text-text-muted">{item.category || 'N/A'}</td>
+                        <td className="p-4 text-right font-mono">{item.qty_available}</td>
+                        <td className="p-4 text-right text-indigo-400 font-bold">${parseFloat(item.total_value).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                    {(!inventoryData || inventoryData.length === 0) && (
+                      <tr><td colSpan={4} className="p-8 text-center text-text-muted">No stock available.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </TabContent>
       </Tabs>

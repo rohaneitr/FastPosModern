@@ -21,7 +21,12 @@ export default function SuperAdminSettingsPage() {
   const [systemPrefs, setSystemPrefs] = useState({
     timezone: 'UTC',
     default_currency_symbol: '$',
-    smtp_sender_address: 'admin@fastpos.com'
+    smtp_sender_address: 'admin@fastpos.com',
+    smtp_host: '',
+    smtp_port: '',
+    smtp_username: '',
+    smtp_password: '',
+    smtp_encryption: 'tls'
   });
 
   // Tab 3: Profile
@@ -33,9 +38,31 @@ export default function SuperAdminSettingsPage() {
   });
 
   useEffect(() => {
-    // Ideally we would fetch settings here
-    // fetchSettings();
+    fetchSettings();
   }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const res = await api.get('/superadmin/settings');
+      const data = res.data;
+      if (data.saas_name) setSaasName(data.saas_name);
+      if (data.saas_logo) setSaasLogoPreview(data.saas_logo);
+      if (data.favicon) setFaviconPreview(data.favicon);
+      
+      setSystemPrefs({
+        timezone: data.timezone || 'UTC',
+        default_currency_symbol: data.default_currency_symbol || '$',
+        smtp_sender_address: data.smtp_sender_address || 'admin@fastpos.com',
+        smtp_host: data.smtp_host || '',
+        smtp_port: data.smtp_port || '',
+        smtp_username: data.smtp_username || '',
+        smtp_password: data.smtp_password || '', // Backend masks this if set
+        smtp_encryption: data.smtp_encryption || 'tls'
+      });
+    } catch (err) {
+      console.error('Failed to load settings', err);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'favicon') => {
     const file = e.target.files?.[0];
@@ -64,7 +91,7 @@ export default function SuperAdminSettingsPage() {
       if (saasLogoFile) formData.append('saas_logo', saasLogoFile);
       if (faviconFile) formData.append('favicon', faviconFile);
 
-      await api.post('/superadmin/branding', formData, {
+      await api.post('/superadmin/settings', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       
@@ -82,12 +109,12 @@ export default function SuperAdminSettingsPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      // Mock API call for system preferences
-      await new Promise(r => setTimeout(r, 500));
+      await api.post('/superadmin/settings', systemPrefs);
       playTaskSuccess();
-      alert('System preferences updated successfully!');
-    } catch (err) {
+      alert('System & SMTP preferences updated successfully!');
+    } catch (err: any) {
       console.error(err);
+      alert(err.response?.data?.message || 'Failed to update system preferences');
     } finally {
       setSubmitting(false);
     }
@@ -215,6 +242,35 @@ export default function SuperAdminSettingsPage() {
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-medium text-text-muted">System SMTP Sender Address (Outbound Mails)</label>
                   <input type="email" value={systemPrefs.smtp_sender_address} onChange={e => setSystemPrefs({...systemPrefs, smtp_sender_address: e.target.value})} className="bg-background border border-border rounded-xl px-4 py-3 text-white outline-none focus:border-primary/50 transition-colors" />
+                </div>
+                
+                {/* SMTP Configuration */}
+                <h3 className="text-lg font-bold text-white mt-4 border-t border-border pt-4">SMTP Configuration</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-text-muted">SMTP Host</label>
+                    <input type="text" value={systemPrefs.smtp_host} onChange={e => setSystemPrefs({...systemPrefs, smtp_host: e.target.value})} className="bg-background border border-border rounded-xl px-4 py-3 text-white outline-none focus:border-primary/50 transition-colors" placeholder="smtp.mailgun.org" />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-text-muted">SMTP Port</label>
+                    <input type="number" value={systemPrefs.smtp_port} onChange={e => setSystemPrefs({...systemPrefs, smtp_port: e.target.value})} className="bg-background border border-border rounded-xl px-4 py-3 text-white outline-none focus:border-primary/50 transition-colors" placeholder="587" />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-text-muted">SMTP Username</label>
+                    <input type="text" value={systemPrefs.smtp_username} onChange={e => setSystemPrefs({...systemPrefs, smtp_username: e.target.value})} className="bg-background border border-border rounded-xl px-4 py-3 text-white outline-none focus:border-primary/50 transition-colors" placeholder="postmaster@yourdomain.com" />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-text-muted">SMTP Password</label>
+                    <input type="password" value={systemPrefs.smtp_password} onChange={e => setSystemPrefs({...systemPrefs, smtp_password: e.target.value})} className="bg-background border border-border rounded-xl px-4 py-3 text-white outline-none focus:border-primary/50 transition-colors" placeholder={systemPrefs.smtp_password === '********' ? '******** (Encrypted)' : 'Enter SMTP Password'} />
+                  </div>
+                  <div className="flex flex-col gap-2 md:col-span-2">
+                    <label className="text-sm font-medium text-text-muted">Encryption</label>
+                    <select value={systemPrefs.smtp_encryption} onChange={e => setSystemPrefs({...systemPrefs, smtp_encryption: e.target.value})} className="bg-background border border-border rounded-xl px-4 py-3 text-white outline-none focus:border-primary/50 transition-colors">
+                      <option value="tls">TLS</option>
+                      <option value="ssl">SSL</option>
+                      <option value="none">None</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="flex justify-end pt-4">
                   <button type="submit" disabled={submitting} className="bg-primary hover:brightness-110 text-white px-8 py-3 rounded-xl font-bold transition-all duration-150 active:scale-[0.97] shadow-lg disabled:opacity-50">

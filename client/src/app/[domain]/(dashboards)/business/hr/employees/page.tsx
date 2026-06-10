@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import BulkMessageModal from '@/components/BulkMessageModal';
+import toast from 'react-hot-toast';
 
 export default function EmployeeProfilePage() {
   const [employees, setEmployees] = useState<any[]>([]);
@@ -82,11 +83,17 @@ export default function EmployeeProfilePage() {
     setInviteLoading(true);
     try {
       await api.post('/business/invites', inviteForm);
-      alert('Invitation sent successfully!');
+      toast.success('Invitation sent successfully!');
       setShowInviteModal(false);
       setInviteForm({ email: '', role: 'Cashier' });
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to send invitation');
+      if (err.response?.status === 422) {
+        const errors = err.response.data.errors;
+        const errorMessages = Object.values(errors).flat().join('\n');
+        toast.error(errorMessages);
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to send invitation');
+      }
     } finally {
       setInviteLoading(false);
     }

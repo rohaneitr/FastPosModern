@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import api from '@/lib/api';
+import toast from 'react-hot-toast';
 
 interface BulkMessageModalProps {
   isOpen: boolean;
@@ -36,7 +37,7 @@ export default function BulkMessageModal({ isOpen, onClose, users }: BulkMessage
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedUserIds.length === 0) {
-      alert('Please select at least one recipient.');
+      toast.error('Please select at least one recipient.');
       return;
     }
     
@@ -47,16 +48,18 @@ export default function BulkMessageModal({ isOpen, onClose, users }: BulkMessage
         subject,
         message
       });
-      // Toast instead of blocking alert
-      const toast = document.createElement('div');
-      toast.className = 'fixed bottom-4 right-4 bg-emerald-500 text-white px-6 py-3 rounded-xl shadow-2xl z-[9999] animate-in fade-in slide-in-from-bottom-4';
-      toast.innerText = 'Message queued successfully. It will be delivered shortly.';
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 4000);
+      
+      toast.success('Message queued successfully. It will be delivered shortly.');
       
       onClose();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to dispatch bulk message');
+      if (err.response?.status === 422) {
+        const errors = err.response.data.errors;
+        const errorMessages = Object.values(errors).flat().join('\n');
+        toast.error(errorMessages || err.response?.data?.message);
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to dispatch bulk message');
+      }
     } finally {
       setSubmitting(false);
     }

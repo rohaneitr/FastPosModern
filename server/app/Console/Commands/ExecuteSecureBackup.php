@@ -61,7 +61,7 @@ class ExecuteSecureBackup extends Command
 
         // 4. Automated Redis Cache Flush
         try {
-            Cache::store('redis')->flush();
+            Cache::flush();
             $this->info('Redis cache flushed successfully.');
         } catch (\Exception $e) {
             $this->warn('Redis cache flush failed: ' . $e->getMessage());
@@ -78,3 +78,4 @@ class ExecuteSecureBackup extends Command
         return 0;
     }
 }
+

@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, Play, CheckCircle, ChefHat } from 'lucide-react';
-// import Echo from 'laravel-echo'; // Assuming Echo is available in the project
+import { Clock, Play, CheckCircle, ChefHat, WifiOff } from 'lucide-react';
+import api from '@/lib/api';
+// import Echo from 'laravel-echo'; // Assuming Echo is instantiated in an EchoProvider
+import { useEcho } from '@/hooks/useEcho'; // Hypothetical hook for Echo instance
 
 interface KotItem {
     name: string;
@@ -58,27 +60,55 @@ const ElapsedTimer: React.FC<{ createdAt: string }> = ({ createdAt }) => {
 
 export const KdsDashboardContainer: React.FC<KdsDashboardProps> = ({ initialTickets = [], businessId }) => {
     const [tickets, setTickets] = useState<KotTicket[]>(initialTickets);
+    const [isOffline, setIsOffline] = useState(false);
+    const { echo } = useEcho(); // Assuming this returns the configured Echo instance
+
+    const fetchActiveOrders = useCallback(async () => {
+        try {
+            const res = await api.get('/restaurant/kds/active-orders');
+            setTickets(res.data.data || res.data);
+            setIsOffline(false);
+        } catch (error) {
+            console.error('KDS Sync failed:', error);
+        }
+    }, []);
 
     useEffect(() => {
-        // In a real app, this would use window.Echo from a global provider
-        // const channel = window.Echo.private(`business.${businessId}.kitchen`);
-        // channel.listen('KotTicketEmitted', (e: any) => {
-        //     handleNewTicket(e.payload);
-        // });
+        if (!echo) return;
 
-        // Mocking for testing purposes when window is available
-        const handleCustomEvent = (e: Event) => {
-            const customEvent = e as CustomEvent;
-            handleNewTicket(customEvent.detail);
-        };
+        // 1. Monitor Connection State
+        echo.connector.pusher.connection.bind('state_change', (states: any) => {
+            if (states.current === 'unavailable' || states.current === 'disconnected') {
+                setIsOffline(true);
+            } else if (states.current === 'connected' && states.previous !== 'connected') {
+                // 2. Full Re-sync on Reconnect
+                if (isOffline) {
+                    fetchActiveOrders();
+                }
+            }
+        });
 
-        window.addEventListener('mock-kot-ticket-emitted', handleCustomEvent);
+        // 3. Bind to Private Channel
+        const channel = echo.private(`business.${businessId}.kds`);
+        
+        channel.listen('.OrderSentToKitchenEvent', (e: any) => {
+            handleNewTicket(e.ticket);
+        });
+
+        channel.listen('.OrderStatusChangedEvent', (e: any) => {
+            // If Waiter changes table to 'Served', reactively remove ticket
+            if (e.status === 'Served' || e.status === 'Cancelled') {
+                setTickets(prev => prev.filter(t => t.id !== e.ticket_id));
+            }
+        });
 
         return () => {
-            // channel.stopListening('KotTicketEmitted');
-            window.removeEventListener('mock-kot-ticket-emitted', handleCustomEvent);
+            channel.stopListening('.OrderSentToKitchenEvent');
+            channel.stopListening('.OrderStatusChangedEvent');
+            echo.leaveChannel(`business.${businessId}.kds`);
+            echo.connector.pusher.connection.unbind('state_change');
         };
-    }, [businessId]);
+    }, [businessId, echo, isOffline, fetchActiveOrders]);
 
     const handleNewTicket = useCallback((payload: any) => {
         const newTicket: KotTicket = {
@@ -135,8 +165,17 @@ export const KdsDashboardContainer: React.FC<KdsDashboardProps> = ({ initialTick
     };
 
     return (
-        <div className="p-6 h-full min-h-screen bg-gray-50 dark:bg-gray-900/40">
-            <header className="mb-8 flex items-center justify-between">
+        <div className="p-6 h-full min-h-screen bg-gray-50 dark:bg-gray-900/40 relative">
+            
+            {/* Reconnection Banner */}
+            {isOffline && (
+                <div className="absolute top-0 left-0 w-full bg-red-600 text-white font-bold py-2 px-4 flex items-center justify-center gap-2 z-50 animate-in slide-in-from-top-full shadow-lg">
+                    <WifiOff size={18} className="animate-pulse" />
+                    <span>Connection Lost. Attempting to reconnect & re-sync orders...</span>
+                </div>
+            )}
+
+            <header className="mb-8 flex items-center justify-between pt-6">
                 <div>
                     <h1 className="text-3xl font-black flex items-center gap-3 tracking-tight text-gray-900 dark:text-white">
                         <ChefHat className="text-indigo-500" size={32} />

@@ -44,10 +44,11 @@ class AdjustStockAction
                 throw new Exception("Location not found or access denied for this tenant.");
             }
 
-            // 2. Fetch the stock record (no need to lockForUpdate here because parent product is already locked)
+            // 2. Fetch the stock record with Pessimistic Locking
             $stock = DB::table('product_stocks')
                 ->where('product_id', $productId)
                 ->where('location_id', $locationId)
+                ->lockForUpdate()
                 ->first();
 
             $qtyBefore = \App\Modules\Sales\Services\FinancialCalculator::of($stock ? $stock->qty_available : 0);

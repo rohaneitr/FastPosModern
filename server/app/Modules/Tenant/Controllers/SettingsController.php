@@ -72,7 +72,7 @@ class SettingsController extends Controller
     public function exchangeRates()
     {
         // Cache DB results in Redis for 12 hours (43200 seconds) to ensure instant loading
-        $rates = Cache::store('redis')->remember('settings:exchange_rates', 43200, function () {
+        $rates = Cache::remember('settings:exchange_rates', 43200, function () {
             return DB::table('exchange_rates')->get();
         });
         
@@ -86,7 +86,7 @@ class SettingsController extends Controller
     {
         try {
             // Rate limit the external API call (cache for 1 hour to prevent API exhaustion)
-            $response = Cache::store('redis')->remember('api:open_exchange_rates', 3600, function() {
+            $response = Cache::remember('api:open_exchange_rates', 3600, function() {
                 $res = Http::timeout(10)->get('https://open.er-api.com/v6/latest/USD');
                 if ($res->successful()) {
                     return $res->json();
@@ -115,7 +115,7 @@ class SettingsController extends Controller
                 }
 
                 // Clear the DB cache so the UI gets fresh rates
-                Cache::store('redis')->forget('settings:exchange_rates');
+                Cache::forget('settings:exchange_rates');
 
                 $rates = DB::table('exchange_rates')->get();
                 return response()->json([
@@ -159,7 +159,7 @@ class SettingsController extends Controller
         );
 
         // Invalidate cache since a manual update occurred
-        Cache::store('redis')->forget('settings:exchange_rates');
+        Cache::forget('settings:exchange_rates');
 
         return response()->json(['message' => 'Exchange rate updated successfully']);
     }
@@ -235,3 +235,4 @@ class SettingsController extends Controller
         return response()->json(['message' => 'Branding updated successfully', 'branding' => $validated]);
     }
 }
+

@@ -102,11 +102,80 @@ class SuperadminController extends Controller
             return response()->json(['message' => 'Business not found'], 404);
         }
 
-        DB::table('businesses')
-            ->where('id', $id)
-            ->update(['active_modules' => json_encode($request->active_modules)]);
+        $requestedSlugs = $request->active_modules;
+        $registry = config('fpm_modules');
+        
+        DB::transaction(function () use ($business, $requestedSlugs, $registry) {
+            // 1. Sync the module definitions if they don't exist in DB
+            $moduleIds = [];
+            foreach ($requestedSlugs as $slug) {
+                if (isset($registry[$slug])) {
+                    $module = DB::table('modules')->where('slug', $slug)->first();
+                    if (!$module) {
+                        $moduleId = DB::table('modules')->insertGetId([
+                            'name' => $registry[$slug]['name'],
+                            'slug' => $slug,
+                            'description' => $registry[$slug]['description'],
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                        $moduleIds[] = $moduleId;
+                    } else {
+                        $moduleIds[] = $module->id;
+                    }
+                }
+            }
 
-        return response()->json(['message' => 'Modules updated successfully']);
+            // 2. Sync Pivot Table
+            DB::table('tenant_modules')->where('business_id', $business->id)->delete();
+            $pivotInserts = array_map(function($modId) use ($business) {
+                return [
+                    'business_id' => $business->id,
+                    'module_id' => $modId,
+                    'is_active' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }, $moduleIds);
+            
+            if (!empty($pivotInserts)) {
+                DB::table('tenant_modules')->insert($pivotInserts);
+            }
+
+            // 3. Update the denormalized JSON for fast auth reads
+            DB::table('businesses')
+                ->where('id', $business->id)
+                ->update(['active_modules' => json_encode($requestedSlugs)]);
+
+            // 4. Update Spatie Permissions for the BusinessOwner
+            $owner = \App\Modules\IAM\Models\User::where('id', $business->owner_id)->first();
+            if ($owner) {
+                $permissionsToSync = [];
+                foreach ($requestedSlugs as $slug) {
+                    $permName = "module.{$slug}";
+                    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => $permName, 'guard_name' => 'sanctum']);
+                    $permissionsToSync[] = $permName;
+                }
+                
+                // Fetch all current module.* permissions the owner has directly
+                $currentModulePerms = $owner->permissions()->where('name', 'like', 'module.%')->pluck('name')->toArray();
+                
+                // Calculate diffs
+                $permsToRemove = array_diff($currentModulePerms, $permissionsToSync);
+                $permsToAdd = array_diff($permissionsToSync, $currentModulePerms);
+                
+                if (!empty($permsToRemove)) {
+                    $owner->revokePermissionTo($permsToRemove);
+                }
+                if (!empty($permsToAdd)) {
+                    $owner->givePermissionTo($permsToAdd);
+                }
+            }
+        });
+
+        \Illuminate\Support\Facades\Cache::forget("tenant_modules:{$id}");
+
+        return response()->json(['message' => 'Modules synced and authorized successfully']);
     }
 
     /**

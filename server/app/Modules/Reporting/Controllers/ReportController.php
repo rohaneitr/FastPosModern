@@ -173,48 +173,82 @@ class ReportController extends Controller
     }
 
     /**
-     * Export Sales Report as CSV
+     * Export Sales Report as PDF (OOM Safe using chunking)
      */
-    public function exportSales(Request $request)
+    public function exportPdf(Request $request)
     {
         $businessId = $request->user()->business_id;
+        $businessName = $request->user()->business->name ?? 'FastPOS Business';
         
         $startDate = $request->query('start_date', Carbon::now()->subDays(30)->startOfDay());
         $endDate = $request->query('end_date', Carbon::now()->endOfDay());
 
-        $sales = DB::table('transactions')
+        // We use chunking to avoid OOM errors on massive datasets.
+        // Instead of passing thousands of raw models to DOMPDF (which will crash it),
+        // we aggregate the data during chunking to build a summary.
+        $summary = [
+            'total_sales' => 0,
+            'total_tax' => 0,
+            'total_items' => 0,
+            'daily_breakdown' => []
+        ];
+
+        DB::table('transactions')
             ->where('business_id', $businessId)
             ->where('type', 'sell')
             ->where('status', 'final')
             ->whereBetween('transaction_date', [$startDate, $endDate])
-            ->select('invoice_no', 'transaction_date', 'total_before_tax', 'tax_amount', 'final_total')
-            ->orderBy('transaction_date', 'desc')
+            ->select('transaction_date', 'total_before_tax', 'tax_amount', 'final_total')
+            ->orderBy('transaction_date', 'asc')
+            ->chunk(500, function ($transactions) use (&$summary) {
+                foreach ($transactions as $tx) {
+                    $summary['total_sales'] += $tx->final_total;
+                    $summary['total_tax'] += $tx->tax_amount;
+                    $summary['total_items'] += 1;
+
+                    $dateKey = Carbon::parse($tx->transaction_date)->format('Y-m-d');
+                    if (!isset($summary['daily_breakdown'][$dateKey])) {
+                        $summary['daily_breakdown'][$dateKey] = 0;
+                    }
+                    $summary['daily_breakdown'][$dateKey] += $tx->final_total;
+                }
+            });
+
+        // Use Barryvdh\DomPDF
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.sales-pdf', [
+            'summary' => $summary,
+            'startDate' => Carbon::parse($startDate)->format('M d, Y'),
+            'endDate' => Carbon::parse($endDate)->format('M d, Y'),
+            'businessName' => $businessName,
+            'generatedAt' => now()->format('M d, Y H:i:s'),
+        ]);
+
+    /**
+     * Get Inventory Valuation Report
+     */
+    public function inventoryValuation(Request $request)
+    {
+        $businessId = $request->user()->business_id;
+
+        $valuation = DB::table('product_stocks')
+            ->join('products', 'product_stocks.product_id', '=', 'products.id')
+            ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
+            ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
+            ->where('products.business_id', $businessId)
+            ->whereNull('products.deleted_at')
+            ->select(
+                'products.name',
+                'products.sku',
+                'brands.name as brand',
+                'categories.name as category',
+                'product_stocks.qty_available',
+                'products.purchase_price',
+                DB::raw('(product_stocks.qty_available * products.purchase_price) as total_value')
+            )
+            ->where('product_stocks.qty_available', '>', 0)
+            ->orderByDesc('total_value')
             ->get();
 
-        $headers = [
-            "Content-type"        => "text/csv",
-            "Content-Disposition" => "attachment; filename=sales_export_" . date('Y-m-d') . ".csv",
-            "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
-            "Expires"             => "0"
-        ];
-
-        $callback = function() use($sales) {
-            $file = fopen('php://output', 'w');
-            fputcsv($file, ['Invoice No', 'Date', 'Subtotal', 'Tax', 'Final Total']);
-
-            foreach ($sales as $row) {
-                fputcsv($file, [
-                    $row->invoice_no,
-                    $row->transaction_date,
-                    $row->total_before_tax,
-                    $row->tax_amount,
-                    $row->final_total
-                ]);
-            }
-            fclose($file);
-        };
-
-        return response()->stream($callback, 200, $headers);
+        return response()->json($valuation);
     }
 }

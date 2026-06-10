@@ -37,11 +37,17 @@ class InvoiceController extends Controller
 
         $lines = DB::table('transaction_lines')
             ->join('products', 'transaction_lines.product_id', '=', 'products.id')
+            ->leftJoin('medicines_meta', 'products.id', '=', 'medicines_meta.product_id')
+            ->leftJoin('prescriptions', 'transaction_lines.prescription_id', '=', 'prescriptions.id')
             ->where('transaction_lines.transaction_id', $id)
             ->select(
                 'products.name as product_name', 'products.sku',
                 'transaction_lines.quantity', 'transaction_lines.unit_price',
-                'transaction_lines.unit_price_inc_tax', 'transaction_lines.item_tax'
+                'transaction_lines.unit_price_inc_tax', 'transaction_lines.item_tax',
+                'transaction_lines.dosage_instructions', 'transaction_lines.warranty_duration',
+                'transaction_lines.sourcing_status',
+                'medicines_meta.generic_name',
+                'prescriptions.doctor_name', 'prescriptions.patient_id'
             )
             ->get();
 
@@ -84,9 +90,30 @@ class InvoiceController extends Controller
         $lines = DB::table('transaction_lines')
             ->join('products', 'transaction_lines.product_id', '=', 'products.id')
             ->where('transaction_lines.transaction_id', $id)
-            ->select('products.name', 'products.sku', 'transaction_lines.quantity',
-                'transaction_lines.unit_price', 'transaction_lines.unit_price_inc_tax', 'transaction_lines.item_tax')
+            ->select('transaction_lines.id as line_id', 'products.name', 'products.sku', 'transaction_lines.quantity',
+                'transaction_lines.unit_price', 'transaction_lines.unit_price_inc_tax', 'transaction_lines.item_tax', 'transaction_lines.warranty_duration')
             ->get();
+
+        $lineIds = $lines->pluck('line_id')->toArray();
+        $serials = DB::table('transaction_item_serials')
+            ->whereIn('transaction_item_id', $lineIds)
+            ->get()
+            ->groupBy('transaction_item_id');
+
+        foreach ($lines as $line) {
+            $lineSerials = $serials->get($line->line_id, collect());
+            $tracking = [];
+            foreach ($lineSerials as $s) {
+                if ($s->serial_number && $s->imei_number) {
+                    $tracking[] = $s->serial_number . ' / ' . $s->imei_number;
+                } elseif ($s->serial_number) {
+                    $tracking[] = $s->serial_number;
+                } elseif ($s->imei_number) {
+                    $tracking[] = $s->imei_number;
+                }
+            }
+            $line->tracking_numbers = $tracking;
+        }
 
         $payments = DB::table('transaction_payments')->where('transaction_id', $id)->get();
 

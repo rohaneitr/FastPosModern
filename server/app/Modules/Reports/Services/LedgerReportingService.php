@@ -17,7 +17,6 @@ class LedgerReportingService
             ->where('journal_entries.business_id', $businessId)
             ->whereBetween('journal_entries.date', [$startDate, $endDate])
             ->whereNull('journal_entries.deleted_at')
-            ->whereNull('journal_lines.deleted_at')
             ->select(
                 DB::raw("SUM(CASE WHEN journal_lines.type = 'debit' THEN journal_lines.amount ELSE 0 END) as total_debits"),
                 DB::raw("SUM(CASE WHEN journal_lines.type = 'credit' THEN journal_lines.amount ELSE 0 END) as total_credits")
@@ -42,8 +41,7 @@ class LedgerReportingService
             ->where('journal_entries.business_id', $businessId)
             ->whereBetween('journal_entries.date', [$startDate, $endDate])
             ->whereNull('journal_entries.deleted_at')
-            ->whereNull('journal_lines.deleted_at')
-            ->whereIn('chart_of_accounts.type', ['Revenue', 'Expense', 'COGS'])
+            ->whereIn('chart_of_accounts.type', ['revenue', 'expense'])
             ->select(
                 'chart_of_accounts.type as account_type',
                 'chart_of_accounts.name as account_name',
@@ -63,19 +61,19 @@ class LedgerReportingService
 
         foreach ($lines as $line) {
             // Revenue normal balance is Credit
-            if ($line->account_type === 'Revenue') {
+            if (strtolower($line->account_type) === 'revenue') {
                 $balance = $line->total_credits - $line->total_debits;
                 $revenue[] = ['name' => $line->account_name, 'balance' => $balance];
                 $totalRevenue += $balance;
             }
             // COGS normal balance is Debit
-            elseif ($line->account_type === 'COGS') {
+            elseif (strtolower($line->account_type) === 'expense' && strtolower($line->account_name) === 'cost of goods sold') {
                 $balance = $line->total_debits - $line->total_credits;
                 $cogs[] = ['name' => $line->account_name, 'balance' => $balance];
                 $totalCogs += $balance;
             }
             // Expense normal balance is Debit
-            elseif ($line->account_type === 'Expense') {
+            elseif (strtolower($line->account_type) === 'expense') {
                 $balance = $line->total_debits - $line->total_credits;
                 $expenses[] = ['name' => $line->account_name, 'balance' => $balance];
                 $totalExpenses += $balance;
@@ -97,5 +95,54 @@ class LedgerReportingService
                 'net_income' => $netIncome,
             ]
         ];
+    }
+
+    /**
+     * Export Profit & Loss to CSV format
+     */
+    public function exportProfitAndLossCsv(int $businessId, string $startDate, string $endDate): string
+    {
+        $pnl = $this->getProfitAndLoss($businessId, $startDate, $endDate);
+        
+        $csvData = [];
+        $csvData[] = ['FastPOS Financial Report'];
+        $csvData[] = ['Type', 'Profit & Loss Statement'];
+        $csvData[] = ['Period', "$startDate to $endDate"];
+        $csvData[] = [];
+        
+        $csvData[] = ['Category', 'Account', 'Balance'];
+        
+        foreach ($pnl['revenue'] as $acc) {
+            $csvData[] = ['Revenue', $acc['name'], number_format((float)$acc['balance'], 2, '.', '')];
+        }
+        $csvData[] = ['Total Revenue', '', number_format((float)$pnl['summary']['total_revenue'], 2, '.', '')];
+        $csvData[] = [];
+        
+        foreach ($pnl['cogs'] as $acc) {
+            $csvData[] = ['Cost of Goods Sold', $acc['name'], number_format((float)$acc['balance'], 2, '.', '')];
+        }
+        $csvData[] = ['Total COGS', '', number_format((float)$pnl['summary']['total_cogs'], 2, '.', '')];
+        $csvData[] = [];
+        
+        $csvData[] = ['Gross Profit', '', number_format((float)$pnl['summary']['gross_profit'], 2, '.', '')];
+        $csvData[] = [];
+        
+        foreach ($pnl['expenses'] as $acc) {
+            $csvData[] = ['Expense', $acc['name'], number_format((float)$acc['balance'], 2, '.', '')];
+        }
+        $csvData[] = ['Total Expenses', '', number_format((float)$pnl['summary']['total_expenses'], 2, '.', '')];
+        $csvData[] = [];
+        
+        $csvData[] = ['Net Income', '', number_format((float)$pnl['summary']['net_income'], 2, '.', '')];
+
+        $output = fopen('php://temp', 'r+');
+        foreach ($csvData as $row) {
+            fputcsv($output, $row);
+        }
+        rewind($output);
+        $csvContent = stream_get_contents($output);
+        fclose($output);
+
+        return $csvContent;
     }
 }

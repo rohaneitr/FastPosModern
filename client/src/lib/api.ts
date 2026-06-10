@@ -63,7 +63,7 @@ api.interceptors.response.use(
     // ── 403: Global RBAC Forbidden Handler ──
     if (status === 403) {
       if (typeof window !== 'undefined') {
-        window.location.href = '/unauthorized';
+        toast.error(error.response?.data?.message || 'You do not have permission to perform this action.', { id: 'forbidden-toast' });
       }
       return Promise.reject(error);
     }
@@ -101,18 +101,35 @@ api.interceptors.response.use(
       }
     }
 
-    // ── 429: Rate Limiting ──────────────
+    // ── 429: Rate Limiting / Idempotency Locks ──────────────
     if (status === 429) {
       const retryAfter = error.response?.headers?.['retry-after'];
-      const seconds = retryAfter ? parseInt(retryAfter, 10) : 60;
+      const seconds = retryAfter ? parseInt(retryAfter, 10) : null;
+      const message = error.response?.data?.message || (seconds ? `Too many requests. Please try again in ${seconds} seconds.` : 'Transaction is processing, please avoid double-clicking.');
       
       if (typeof window !== 'undefined') {
-        toast.error(`Too many requests. Please try again in ${seconds} seconds.`, {
+        toast.error(message, {
           duration: 5000,
           id: 'rate-limit-toast', // Prevents duplicate toasts
         });
         
-        useRateLimitStore.getState().setRateLimited(seconds);
+        if (seconds) {
+          useRateLimitStore.getState().setRateLimited(seconds);
+        }
+      }
+    }
+
+    // ── 409: Database Deadlocks ──────────────
+    if (status === 409) {
+      if (typeof window !== 'undefined') {
+        toast.error(error.response?.data?.message || 'System busy resolving a conflict. Please retry.', { id: 'conflict-toast' });
+      }
+    }
+
+    // ── 500: Server Errors ──────────────
+    if (status >= 500 && status !== 503) {
+      if (typeof window !== 'undefined') {
+        toast.error(error.response?.data?.message || 'A server error occurred. Please try again later.', { id: 'server-error-toast' });
       }
     }
 

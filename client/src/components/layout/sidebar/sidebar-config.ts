@@ -47,10 +47,10 @@ export const businessMenuItems: SidebarMenuItem[] = [
   { name: 'Customers & CRM', i18nKey: 'nav.customersCRM', path: '/business/contacts', icon: Users, moduleAccess: ['crm', 'customers'], section: 'CRM' },
 
   // ── Industry ──
-  { name: 'PC Builder', path: '/business/quotations/pc-builder', icon: Cpu, moduleAccess: ['pc_builder', 'pc builder'], section: 'Industry' },
-  { name: 'CCTV Builder', path: '/business/quotations/cctv-builder', icon: Camera, moduleAccess: ['cctv_builder', 'cctv builder'] },
+  { name: 'PC Builder', path: '/business/quotations/pc-builder', icon: Cpu, moduleAccess: ['hardware_builder'], section: 'Industry' },
+  { name: 'CCTV Builder', path: '/business/quotations/cctv-builder', icon: Camera, moduleAccess: ['hardware_builder'] },
   { name: 'Pharmacy', path: '/business/pharmacy', icon: Pill, moduleAccess: ['pharmacy'] },
-  { name: 'Warranty & RMA', path: '/business/warranty', icon: Shield, moduleAccess: ['warranty', 'rma', 'pos'] },
+  { name: 'Warranty & RMA', path: '/business/warranty', icon: Shield, moduleAccess: ['serial_tracking'] },
 
   // ── Back Office ──
   { name: 'Accounting', i18nKey: 'nav.accounting', path: '/business/accounting', icon: Calculator, moduleAccess: ['accounting', 'finance'], adminOnly: true, section: 'Back Office' },

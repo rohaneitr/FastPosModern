@@ -21,6 +21,11 @@ class AppServiceProvider extends ServiceProvider
     {
         \Illuminate\Database\Eloquent\Model::preventLazyLoading(! app()->isProduction());
 
+        // ── Pulse Authorization ────────────────────────────────────────────────
+        \Illuminate\Support\Facades\Gate::define('viewPulse', function ($user) {
+            return $user->hasRole('SuperAdmin');
+        });
+
         // ── Observers ──────────────────────────────────────────────────────────
         \App\Modules\Tenant\Models\Business::observe(\App\Modules\Tenant\Observers\BusinessObserver::class);
 
@@ -61,8 +66,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         // ── Email event listeners (global mail audit logging) ──────────────────
-        // \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageSent::class,   \App\Listeners\LogSentEmail::class);
-        // \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageFailed::class, \App\Listeners\LogFailedEmail::class);
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageSent::class,   \App\Listeners\LogSentEmail::class);
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageFailed::class, \App\Listeners\LogFailedEmail::class);
 
         // ── Dynamic SMTP override from database/cache ──────────────────────────
         // If a SuperAdmin has saved SMTP settings via the API, they are stored in
@@ -82,7 +87,7 @@ class AppServiceProvider extends ServiceProvider
     private function applyDynamicSmtpConfig(): void
     {
         try {
-            $smtp = \Illuminate\Support\Facades\Cache::store('redis')->get('global_smtp_settings');
+            $smtp = \Illuminate\Support\Facades\Cache::get('global_smtp_settings');
 
             if (!$smtp || !is_array($smtp) || empty($smtp['mail_host'])) {
                 return; // No override — use .env values
@@ -106,3 +111,4 @@ class AppServiceProvider extends ServiceProvider
         }
     }
 }
+

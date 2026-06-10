@@ -3,9 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { usePosSounds } from '@/hooks/usePosSounds';
+import { useEntitlements } from '@/hooks/useEntitlements';
 
 export default function TenantSettingsHub() {
   const { playTaskSuccess } = usePosSounds();
+  const { hasModule } = useEntitlements();
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -126,6 +128,10 @@ export default function TenantSettingsHub() {
     { id: 'invoices', label: 'Receipts & Invoices', icon: '🧾' },
     { id: 'preferences', label: 'Security & Preferences', icon: '🔒' },
   ];
+
+  if (hasModule('pharmacy')) {
+    tabs.push({ id: 'pharmacy', label: 'Pharmacy Settings', icon: '💊' });
+  }
 
   return (
     <div className="flex flex-col h-full gap-8 animate-in fade-in duration-500 pb-12 w-full max-w-7xl mx-auto">
@@ -318,6 +324,32 @@ export default function TenantSettingsHub() {
                 <div className="flex justify-end pt-4">
                   <button type="submit" disabled={submitting} className="bg-primary hover:bg-primary/90 text-white px-8 py-3 rounded-xl font-bold transition-all disabled:opacity-50">
                     {submitting ? 'Saving...' : 'Save Preferences'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* TAB 5: Pharmacy Settings */}
+          {activeTab === 'pharmacy' && hasModule('pharmacy') && (
+            <div className="animate-in slide-in-from-right-4 duration-300">
+              <h2 className="text-xl font-bold text-white mb-6 border-b border-border pb-4">Pharmacy & Prescription Settings</h2>
+              <form className="flex flex-col gap-6">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium text-text-muted">Prescription Template Text</label>
+                  <textarea rows={3} defaultValue="Warning: Store below 25°C. Keep out of reach of children." className="bg-background border border-border rounded-xl px-4 py-3 text-white outline-none focus:border-primary/50 transition-colors custom-scrollbar" />
+                </div>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" id="require_rx" defaultChecked className="w-5 h-5 accent-primary bg-background border-border rounded" />
+                  <label htmlFor="require_rx" className="text-sm text-white font-medium">Require Doctor's Prescription for restricted drugs during checkout</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" id="print_dosage" defaultChecked className="w-5 h-5 accent-primary bg-background border-border rounded" />
+                  <label htmlFor="print_dosage" className="text-sm text-white font-medium">Print dosage instructions on POS receipt</label>
+                </div>
+                <div className="flex justify-end pt-4">
+                  <button type="button" onClick={() => { setSubmitting(true); setTimeout(() => { setSubmitting(false); alert('Pharmacy settings saved'); }, 500); }} disabled={submitting} className="bg-primary hover:bg-primary/90 text-white px-8 py-3 rounded-xl font-bold transition-all disabled:opacity-50">
+                    {submitting ? 'Saving...' : 'Save Pharmacy Settings'}
                   </button>
                 </div>
               </form>

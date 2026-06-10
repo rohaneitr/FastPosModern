@@ -16,7 +16,7 @@ class RateLimitingTest extends TestCase
         // Clear rate limiter cache before tests
         RateLimiter::clear('api');
         RateLimiter::clear('sensitive');
-        Cache::store('redis')->flush();
+        Cache::flush();
     }
 
     public function test_standard_api_rate_limiter_blocks_excessive_requests()
@@ -75,3 +75,4 @@ class RateLimitingTest extends TestCase
         }
     }
 }
+

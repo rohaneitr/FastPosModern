@@ -5,6 +5,13 @@ import { useCartStore } from '@/store/useCartStore';
 import { useCurrency } from '@/lib/currency';
 import { useTranslation } from '@/lib/i18n';
 import api from '@/lib/api';
+import { useEntitlements } from '@/hooks/useEntitlements';
+import dynamic from 'next/dynamic';
+
+const PrescriptionModal = dynamic(
+  () => import('@/features/pharmacy/components/PrescriptionModal').then(mod => mod.PrescriptionModal),
+  { ssr: false }
+);
 
 interface CartPanelProps {
   contacts: any[];
@@ -29,7 +36,16 @@ export function CartPanel({
 }: CartPanelProps) {
   const { t } = useTranslation();
   const { format } = useCurrency();
-  const { items, taxRate, getCartTotal, removeItem, updateQuantity, clearCart } = useCartStore();
+  const { items, taxRate, getCartTotal, removeItem, updateQuantity, updateItemField, clearCart, hasHydrated } = useCartStore();
+  const { hasModule } = useEntitlements();
+  const showAdvancedTracking = hasModule('serial_tracking') || hasModule('advanced_inventory');
+
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const safeItems = isClient && hasHydrated ? items : [];
 
   const [contactId, setContactId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bkash' | 'sslcommerz' | 'card' | 'advance'>('cash');
@@ -48,11 +64,21 @@ export function CartPanel({
     }
   }, [contactId]);
 
-  const subtotal = items.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity) * Number(item.fractional_ratio || 1)), 0);
+  const subtotal = safeItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity) * Number(item.fractional_ratio || 1)), 0);
   const taxAmount = subtotal * Number(taxRate);
   const total = subtotal + taxAmount;
 
+  const [showRxModal, setShowRxModal] = useState(false);
+  const [rxPayload, setRxPayload] = useState<any>(null);
+
   const handleCheckout = () => {
+    // Pharmacy Rx Shield Check
+    const requiresRx = safeItems.some(item => item.is_rx_required);
+    if (requiresRx && !rxPayload) {
+      setShowRxModal(true);
+      return;
+    }
+
     onCheckout({
       paymentMethod,
       contactId,
@@ -62,7 +88,11 @@ export function CartPanel({
       customerPhone,
       total,
       subtotal,
-      taxAmount
+      taxAmount,
+      prescription_doctor: rxPayload?.doctor,
+      prescription_patient: rxPayload?.patient,
+      prescription_file: rxPayload?.file ? "base64_encoded_or_s3_url_placeholder" : null, // Assuming multipart handling is managed elsewhere or simplified here
+      prescription_notes: rxPayload?.notes
     });
   };
 
@@ -73,7 +103,7 @@ export function CartPanel({
         <div className="flex justify-between items-center">
           <h2 className="font-semibold text-lg flex items-center gap-2">
             Current Sale 
-            <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">{items.length}</span>
+            <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">{safeItems.length}</span>
           </h2>
           <div className="flex gap-2">
             <button 
@@ -100,14 +130,14 @@ export function CartPanel({
 
       {/* Cart Items */}
       <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3">
-        {items.length === 0 ? (
+        {safeItems.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-text-muted">
             <div className="text-4xl mb-2 opacity-50">🛒</div>
             <p>Your cart is empty</p>
             <p className="text-xs mt-1 opacity-70">Click a product to add it</p>
           </div>
         ) : (
-          items.map((item) => (
+          safeItems.map((item) => (
             <div key={item.id} className="bg-surface/80 border border-border rounded-lg p-3 flex flex-col gap-2">
               <div className="flex justify-between items-start">
                 <div className="font-medium pr-2 flex flex-col w-full">
@@ -131,10 +161,29 @@ export function CartPanel({
                 </div>
                 <div className="font-semibold text-primary">{format(Number(item.price) * item.quantity * (item.fractional_ratio || 1))}</div>
               </div>
-              {item.has_serial_number && (
-                <div className="mt-2 pt-2 border-t border-border/50 flex justify-between items-center">
-                  <span className="text-xs text-text-muted">Serial Numbers: {(item.serial_numbers || []).length}/{item.quantity}</span>
-                  <button onClick={() => onSerialRequired(item)} className="text-xs text-primary hover:underline">Select Serials</button>
+              {hasPharmacyModule && (item.is_medicine || item.generic_name || item.is_rx_required) && (
+                <div className="mt-1 mb-1">
+                  <input 
+                    type="text" 
+                    placeholder="Dosage Instructions (e.g. 1-0-1 after meal)" 
+                    value={item.dosage_instructions || ''}
+                    onChange={(e) => updateItemField(item.id, 'dosage_instructions', e.target.value)}
+                    className="w-full bg-background/50 border border-border rounded px-2 py-1 text-[11px] text-white outline-none focus:border-rose-500/50 transition-colors"
+                  />
+                </div>
+              )}
+              {showAdvancedTracking && (item.enable_sr_no || item.enable_imei || item.enable_warranty) && (
+                <div className="mt-2 pt-2 border-t border-border/50 flex flex-col justify-between items-start gap-2">
+                  <span className="text-[11px] text-text-muted flex gap-2 w-full">
+                    {item.enable_sr_no && <span>Serials: {(item.serial_numbers || []).length}/{item.quantity}</span>}
+                    {item.enable_imei && <span>IMEIs: {(item.imei_numbers || []).length}/{item.quantity}</span>}
+                    {item.enable_warranty && <span>Warranty: {item.warranty_duration || 'N/A'}</span>}
+                  </span>
+                  {(item.enable_sr_no || item.enable_imei) && (
+                    <button onClick={() => onSerialRequired(item)} className="text-[11px] text-fuchsia-400 hover:text-fuchsia-300 font-bold bg-fuchsia-500/10 px-2 py-1 rounded w-full flex justify-center items-center">
+                       {item.enable_sr_no ? 'Select Serials' : 'Select IMEIs'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -217,7 +266,7 @@ export function CartPanel({
 
         <button 
           onClick={handleCheckout}
-          disabled={isCheckingOut || items.length === 0}
+          disabled={isCheckingOut || safeItems.length === 0}
           className="w-full mt-2 bg-gradient-to-r from-primary to-primary-hover hover:opacity-90 text-white font-bold py-3.5 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] disabled:opacity-50 transition-all flex justify-center items-center gap-2"
         >
           {isCheckingOut ? (
@@ -228,6 +277,16 @@ export function CartPanel({
           ) : `Pay ${format(total)}`}
         </button>
       </div>
+
+      {showRxModal && (
+        <PrescriptionModal 
+          onClose={() => setShowRxModal(false)}
+          onSubmit={(data) => {
+            setRxPayload(data);
+            setShowRxModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }

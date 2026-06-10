@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import { ModuleGuard } from '@/components/layout/module-guard';
 
 export default function PharmacyPage() {
   const [medicines, setMedicines] = useState([]);
@@ -45,8 +46,9 @@ export default function PharmacyPage() {
   const filteredMedicines = medicines; // Filtering is handled by API now
 
   return (
-    <div className="flex flex-col gap-8 animate-in fade-in duration-500 pb-12 relative">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <ModuleGuard moduleSlug="pharmacy">
+      <div className="flex flex-col gap-8 animate-in fade-in duration-500 pb-12 relative">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-500 tracking-tight">
             Pharmacy Inventory
@@ -158,7 +160,8 @@ export default function PharmacyPage() {
             </div>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </ModuleGuard>
   );
 }

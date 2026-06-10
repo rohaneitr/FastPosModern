@@ -1,7 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useInventoryStock } from './use-inventory-stock';
 import { useLocations } from './use-locations';
+import { mutate as globalMutate } from 'swr';
+import { queryKeys } from './keys';
 import api from '@/lib/api';
+import { globalSync } from '@/lib/sync/broadcast';
 
 export interface AdjustPayload {
   product_id: number;
@@ -36,13 +39,46 @@ export function useInventoryData() {
   }, [stocks, searchQuery]);
 
   const adjustStock = async (payload: AdjustPayload) => {
-    await api.post('/inventory/adjust', payload);
-    refreshStock();
+    const previousStocks = [...stocks];
+    
+    // Optimistic Update
+    globalMutate(queryKeys.inventoryStock, (current: any[] = []) => {
+      return current.map(s => {
+        // If we match exactly by product_id and location_id, optimistically update
+        // We only have product_name / location_name in the UI typically, 
+        // but we can try to find by ID if the API includes it
+        if (s.product_id === payload.product_id || s.id === payload.product_id) {
+          const qty = Number(s.qty_available);
+          const adj = Number(payload.quantity);
+          return {
+            ...s,
+            qty_available: payload.adjustment_type === 'increase' ? qty + adj : Math.max(0, qty - adj)
+          };
+        }
+        return s;
+      });
+    }, false);
+
+    try {
+      await api.post('/inventory/adjust', payload);
+      globalSync.broadcast('INVENTORY_MUTATED');
+      refreshStock();
+    } catch (error) {
+      // Rollback
+      globalMutate(queryKeys.inventoryStock, previousStocks, false);
+      throw error;
+    }
   };
 
   const transferStock = async (payload: TransferPayload) => {
-    await api.post('/inventory/transfer', payload);
-    refreshStock();
+    // Pessimistic or simplistic for transfers due to complexity of multi-location updates
+    try {
+      await api.post('/inventory/transfer', payload);
+      globalSync.broadcast('INVENTORY_MUTATED');
+      refreshStock();
+    } catch (error) {
+      throw error;
+    }
   };
 
   return {

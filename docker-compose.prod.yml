@@ -8,6 +8,11 @@ services:
     image: ghcr.io/your-org/fastpos-backend:latest
     container_name: fastpos_backend_prod
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -42,6 +47,40 @@ services:
       redis:
         condition: service_healthy
 
+  queue_worker:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: ghcr.io/your-org/fastpos-backend:latest
+    container_name: fastpos_queue_prod
+    restart: unless-stopped
+    command: php artisan queue:work redis --sleep=3 --tries=3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - APP_KEY=${APP_KEY}
+      - APP_URL=https://api.${DOMAIN}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - CACHE_STORE=redis
+      - QUEUE_CONNECTION=redis
+      - SESSION_DRIVER=redis
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./client
@@ -49,9 +88,15 @@ services:
     image: ghcr.io/your-org/fastpos-frontend:latest
     container_name: fastpos_frontend_prod
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "127.0.0.1:3000:3000"
     environment:
+      - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=https://api.${DOMAIN}/api/v1
       - NEXT_PUBLIC_ROOT_DOMAIN=${DOMAIN}
     healthcheck:
@@ -73,6 +118,11 @@ services:
     image: postgres:16-alpine
     container_name: fastpos_postgres_prod
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - POSTGRES_DB=${DB_DATABASE}
       - POSTGRES_USER=${DB_USERNAME}
@@ -89,6 +139,11 @@ services:
     image: redis:7-alpine
     container_name: fastpos_redis_prod
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - redis_data_prod:/data
     healthcheck:

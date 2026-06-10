@@ -34,6 +34,13 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::apiResource('invoice-layouts', \App\Modules\Tenant\Controllers\InvoiceLayoutController::class);
         });
         
+        // API Keys (Requires Authentication and Business Admin)
+        Route::middleware('role:BusinessAdmin')->group(function () {
+            Route::get('/api-keys', [\App\Modules\Tenant\Controllers\ApiKeyController::class, 'index']);
+            Route::post('/api-keys', [\App\Modules\Tenant\Controllers\ApiKeyController::class, 'store']);
+            Route::delete('/api-keys/{id}', [\App\Modules\Tenant\Controllers\ApiKeyController::class, 'destroy']);
+        });
+
         // Device Activation (Requires Authentication)
         Route::post('/devices/activate', [\App\Modules\Tenant\Controllers\DeviceHeartbeatController::class, 'activatePosDevice']);
         Route::get('/devices', [\App\Modules\Tenant\Controllers\DeviceHeartbeatController::class, 'getDevices']);

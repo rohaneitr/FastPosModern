@@ -17,9 +17,19 @@ class TransactionController extends Controller
      */
     public function checkout(Request $request)
     {
+        \Illuminate\Support\Facades\Gate::authorize('pos.access');
         $businessId = $request->user()->business_id;
         $documentType = $request->input('document_type', $request->input('save_as_quotation') ? 'Quotation' : 'Invoice');
         $isPosting = $documentType === 'Invoice';
+
+        // Strict API Idempotency / Double-Charge Shield
+        if ($isPosting) {
+            $lockKey = "fpm_checkout_lock_{$businessId}_{$request->user()->id}";
+            $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 5);
+            if (!$lock->get()) {
+                return response()->json(['message' => 'FPM Security: Multiple rapid checkouts detected. Please wait a moment.'], 429);
+            }
+        }
 
         if ($isPosting) {
             $business = DB::table('businesses')->where('id', $businessId)->first();
@@ -55,6 +65,13 @@ class TransactionController extends Controller
             'items.*.product_id' => ['required', Rule::exists('products', 'id')->where('business_id', $businessId)],
             'items.*.quantity' => 'required|numeric|min:1',
             'items.*.price' => 'required|numeric|min:0',
+            'items.*.serial_numbers' => 'nullable|array',
+            'items.*.serial_numbers.*' => 'string',
+            'items.*.imei_numbers' => 'nullable|array',
+            'items.*.imei_numbers.*' => 'string',
+            'items.*.warranty_duration' => 'nullable|string|max:255',
+            'items.*.fractional_ratio' => 'nullable|numeric|min:0.01',
+            'items.*.dosage_instructions' => 'nullable|string|max:255',
             'tax_rate' => 'required|numeric|min:0',
             'discount_type' => 'nullable|string|in:fixed,percentage',
             'discount_amount' => 'nullable|numeric|min:0',
@@ -66,7 +83,28 @@ class TransactionController extends Controller
             'convert_quotation_id' => 'nullable|integer',
             'send_sms' => 'nullable|boolean',
             'customer_phone' => 'nullable|string|max:20',
+            'prescription_doctor' => 'nullable|string|max:255',
+            'prescription_patient' => 'nullable|string|max:255',
+            'prescription_file' => 'nullable|string',
+            'prescription_notes' => 'nullable|string',
         ]);
+
+        // PHARMACY MODULE: Rx Shield Compliance
+        // We do a fast lookup to check if any product in the cart strictly requires a prescription.
+        $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
+        $rxRequiredCount = DB::table('medicines_meta')
+            ->whereIn('product_id', $productIds)
+            ->where('is_rx_required', true)
+            ->count();
+
+        if ($rxRequiredCount > 0) {
+            $hasRx = !empty($validated['prescription_doctor']) || !empty($validated['prescription_patient']) || !empty($validated['prescription_file']);
+            if (!$hasRx) {
+                return response()->json([
+                    'message' => 'FPM Compliance: One or more medicines in your cart require a valid prescription. Please provide prescription details.'
+                ], 422);
+            }
+        }
 
         $subtotal = \App\Modules\Sales\Services\FinancialCalculator::of(0);
         foreach ($validated['items'] as $item) {
@@ -96,7 +134,7 @@ class TransactionController extends Controller
         $amountDue = \App\Modules\Sales\Services\FinancialCalculator::applyDiscount($finalTotal, $amountPaid);
 
         try {
-            $result = DB::transaction(function () use ($validated, $businessId, $request, $isPosting, $documentType, $invoiceNo, $amountPaid, $amountDue, $subtotal, $discountValue, $taxAmount, $finalTotal) {
+            $result = DB::transaction(function () use ($validated, $businessId, $request, $isPosting, $documentType, $invoiceNo, $amountPaid, $amountDue, $subtotal, $discountValue, $taxAmount, $finalTotal, $rxRequiredCount) {
                 if ($isPosting && $amountDue->isGreaterThan(0.01) && empty($validated['contact_id'])) {
                     throw new \Exception('Customer MUST be selected for credit sales / dues.');
                 }
@@ -164,27 +202,122 @@ class TransactionController extends Controller
                     'discount_amount' => (string) $discountValue,
                     'discount_type' => $validated['discount_type'] ?? null,
                     'final_total' => (string) $finalTotal,
-                    'amount_due' => (string) $amountDue,
-                    'payment_status' => $paymentStatus,
                     'created_at' => Carbon::now(),
                     'updated_at' => Carbon::now(),
                 ];
 
                 $transactionId = DB::table('transactions')->insertGetId($insertData);
 
+                // Insert Prescription Record if provided
+                $prescriptionId = null;
+                if ($rxRequiredCount > 0 || !empty($validated['prescription_doctor']) || !empty($validated['prescription_patient'])) {
+                    $prescriptionId = DB::table('prescriptions')->insertGetId([
+                        'business_id' => $businessId,
+                        'transaction_id' => $transactionId,
+                        'doctor_name' => $validated['prescription_doctor'] ?? null,
+                        'patient_id' => $validated['prescription_patient'] ?? null,
+                        'file_path' => $validated['prescription_file'] ?? null,
+                        'notes' => $validated['prescription_notes'] ?? null,
+                        'created_at' => Carbon::now(),
+                        'updated_at' => Carbon::now(),
+                    ]);
+                }
+
                 $productQuantities = [];
+                $compositeChildrenMap = []; // parent_id => [child_id => qty_needed_per_parent]
+
+                // Identify composites and load their children
+                $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
+                $products = DB::table('products')->whereIn('id', $productIds)->get()->keyBy('id');
+                
+                $assemblies = DB::table('product_assemblies')
+                    ->whereIn('parent_product_id', $productIds)
+                    ->get();
+                
+                foreach ($assemblies as $asm) {
+                    $compositeChildrenMap[$asm->parent_product_id][$asm->child_product_id] = $asm->quantity;
+                }
+
                 foreach ($validated['items'] as $item) {
                     $fractionalRatio = $item['fractional_ratio'] ?? 1.0;
                     $actualQty = $item['quantity'] * $fractionalRatio;
                     
-                    if (!isset($productQuantities[$item['product_id']])) {
-                        $productQuantities[$item['product_id']] = 0;
+                    $product = $products->get($item['product_id']);
+                    
+                    if ($product && $product->type === 'composite' && isset($compositeChildrenMap[$item['product_id']])) {
+                        // Expand composite into children for FIFO deduction
+                        foreach ($compositeChildrenMap[$item['product_id']] as $childId => $qtyPerParent) {
+                            $totalChildQty = $actualQty * $qtyPerParent;
+                            if (!isset($productQuantities[$childId])) {
+                                $productQuantities[$childId] = 0;
+                            }
+                            $productQuantities[$childId] += $totalChildQty;
+                        }
+                    } else {
+                        // Standard product
+                        if (!isset($productQuantities[$item['product_id']])) {
+                            $productQuantities[$item['product_id']] = 0;
+                        }
+                        $productQuantities[$item['product_id']] += $actualQty;
                     }
-                    $productQuantities[$item['product_id']] += $actualQty;
                 }
                 
+                $deductibleQuantities = [];
+                $pendingSourcingProducts = [];
+                $isPendingParts = false;
+
+                if ($isPosting) {
+                    $stockCheckMap = DB::table('product_stocks')
+                        ->whereIn('product_id', array_keys($productQuantities))
+                        ->where('location_id', $validated['location_id'])
+                        ->lockForUpdate()
+                        ->get()
+                        ->keyBy('product_id');
+
+                    foreach ($productQuantities as $childId => $reqQty) {
+                        $available = $stockCheckMap->has($childId) ? $stockCheckMap->get($childId)->qty_available : 0;
+                        if ($available >= $reqQty) {
+                            $deductibleQuantities[$childId] = $reqQty;
+                        } else {
+                            $isFromComposite = false;
+                            foreach ($validated['items'] as $item) {
+                                $productType = $products->get($item['product_id'])->type ?? 'standard';
+                                if ($productType === 'composite' && isset($compositeChildrenMap[$item['product_id']][$childId])) {
+                                    $isFromComposite = true;
+                                    break;
+                                }
+                            }
+
+                            if ($isFromComposite) {
+                                $pendingSourcingProducts[$childId] = true;
+                                $isPendingParts = true;
+                            } else {
+                                throw \Illuminate\Validation\ValidationException::withMessages([
+                                    'inventory' => ["Strict POS Limit: Insufficient stock available for product ID: $childId"]
+                                ]);
+                            }
+                        }
+                    }
+                }
+
                 $batchFifoAction = app(\App\Modules\Inventory\Actions\ConsumeBatchFIFOInventoryAction::class);
-                $cogsMap = !$isPosting ? [] : $batchFifoAction->execute($businessId, $productQuantities);
+                $cogsMap = !$isPosting ? [] : $batchFifoAction->execute($businessId, $deductibleQuantities);
+
+                // Re-calculate COGS for composites so the transaction line unit_cost is accurate
+                $finalCogsMap = [];
+                foreach ($validated['items'] as $item) {
+                    $product = $products->get($item['product_id']);
+                    if ($product && $product->type === 'composite' && isset($compositeChildrenMap[$item['product_id']])) {
+                        $compositeCogs = 0;
+                        foreach ($compositeChildrenMap[$item['product_id']] as $childId => $qtyPerParent) {
+                            $childUnitCogs = $cogsMap[$childId] ?? 0;
+                            $compositeCogs += ($childUnitCogs * $qtyPerParent);
+                        }
+                        $finalCogsMap[$item['product_id']] = $compositeCogs * ($item['quantity'] * ($item['fractional_ratio'] ?? 1.0));
+                    } else {
+                        $finalCogsMap[$item['product_id']] = ($cogsMap[$item['product_id']] ?? 0) * ($item['quantity'] * ($item['fractional_ratio'] ?? 1.0));
+                    }
+                }
 
                 $totalCogs = \App\Modules\Sales\Services\FinancialCalculator::of(0);
 
@@ -194,9 +327,25 @@ class TransactionController extends Controller
                     return $a['product_id'] <=> $b['product_id'];
                 });
 
+                if ($isPendingParts) {
+                    DB::table('transactions')->where('id', $transactionId)->update(['sourcing_status' => 'pending_parts']);
+                }
+
                 foreach ($sortedItems as $item) {
                     $fractionalRatio = $item['fractional_ratio'] ?? 1.0;
                     $actualQty = $item['quantity'] * $fractionalRatio;
+
+                    $lineSourcingStatus = 'ready';
+                    $productType = $products->get($item['product_id'])->type ?? 'standard';
+
+                    if ($isPosting && $productType === 'composite' && isset($compositeChildrenMap[$item['product_id']])) {
+                        foreach ($compositeChildrenMap[$item['product_id']] as $childId => $qtyPerParent) {
+                            if (isset($pendingSourcingProducts[$childId])) {
+                                $lineSourcingStatus = 'pending_sourcing';
+                                break;
+                            }
+                        }
+                    }
 
                     $lineId = DB::table('transaction_lines')->insertGetId([
                         'transaction_id' => $transactionId,
@@ -205,79 +354,176 @@ class TransactionController extends Controller
                         'unit_price' => $item['price'],
                         'unit_price_inc_tax' => (string) \App\Modules\Sales\Services\FinancialCalculator::add($item['price'], \App\Modules\Sales\Services\FinancialCalculator::calculateTax($item['price'], $validated['tax_rate'])),
                         'item_tax' => (string) \App\Modules\Sales\Services\FinancialCalculator::calculateTax($item['price'], $validated['tax_rate']),
+                        'warranty_duration' => $item['warranty_duration'] ?? null,
+                        'prescription_id' => $prescriptionId,
                         'dosage_instructions' => $item['dosage_instructions'] ?? null,
+                        'sourcing_status' => $lineSourcingStatus,
                         'created_at' => Carbon::now(),
                         'updated_at' => Carbon::now(),
                     ]);
 
                     if ($isPosting) {
-                        $stock = DB::table('product_stocks')
-                            ->where('product_id', $item['product_id'])
-                            ->where('location_id', $validated['location_id'])
-                            ->lockForUpdate()
-                            ->first();
+                        if ($productType === 'composite' && isset($compositeChildrenMap[$item['product_id']])) {
+                            // Deduct from children
+                            foreach ($compositeChildrenMap[$item['product_id']] as $childId => $qtyPerParent) {
+                                if (isset($pendingSourcingProducts[$childId])) {
+                                    continue; // Skip physical deduction for back-ordered parts
+                                }
 
-                        if (!$stock || $stock->qty_available < $actualQty) {
-                            throw \Illuminate\Validation\ValidationException::withMessages([
-                                'inventory' => ['Insufficient stock available for the requested product.']
+                                $totalChildQty = $actualQty * $qtyPerParent;
+                                $stock = DB::table('product_stocks')
+                                    ->where('product_id', $childId)
+                                    ->where('location_id', $validated['location_id'])
+                                    ->lockForUpdate()
+                                    ->first();
+                                
+                                if (!$stock || $stock->qty_available < $totalChildQty) {
+                                    throw \Illuminate\Validation\ValidationException::withMessages([
+                                        'inventory' => ["Insufficient stock for kit component ID: $childId"]
+                                    ]);
+                                }
+                                
+                                $qtyBeforeStr = (string) \App\Modules\Sales\Services\FinancialCalculator::of($stock->qty_available);
+                                $qtyAfterStr = (string) \App\Modules\Sales\Services\FinancialCalculator::subtract($stock->qty_available, $totalChildQty);
+                                
+                                DB::table('product_stocks')
+                                    ->where('id', $stock->id)
+                                    ->update(['qty_available' => clone \App\Modules\Sales\Services\FinancialCalculator::of($qtyAfterStr)->toBigDecimal()]);
+                                
+                                DB::table('stock_history')->insert([
+                                    'business_id' => $businessId,
+                                    'product_id' => $childId,
+                                    'location_id' => $validated['location_id'],
+                                    'event_type' => 'Decrease',
+                                    'quantity_adjusted' => '-' . $totalChildQty,
+                                    'qty_before' => $qtyBeforeStr,
+                                    'qty_after' => $qtyAfterStr,
+                                    'reason' => 'Kit Component Sold (INV: ' . $invoiceNo . ')',
+                                    'user_id' => $request->user()->id,
+                                    'transaction_id' => $transactionId,
+                                    'transaction_line_id' => $lineId,
+                                    'created_at' => Carbon::now(),
+                                    'updated_at' => Carbon::now(),
+                                ]);
+                            }
+                            
+                            $lineCogs = $finalCogsMap[$item['product_id']] ?? 0;
+                            $totalCogs = $totalCogs->plus($lineCogs);
+                            
+                        } else {
+                            // Standard product
+                            $stock = DB::table('product_stocks')
+                                ->where('product_id', $item['product_id'])
+                                ->where('location_id', $validated['location_id'])
+                                ->lockForUpdate()
+                                ->first();
+
+                            if (!$stock || $stock->qty_available < $actualQty) {
+                                throw \Illuminate\Validation\ValidationException::withMessages([
+                                    'inventory' => ['Insufficient stock available for the requested product.']
+                                ]);
+                            }
+
+                            $qtyBeforeStr = (string) \App\Modules\Sales\Services\FinancialCalculator::of($stock->qty_available);
+                            $qtyAfterStr = (string) \App\Modules\Sales\Services\FinancialCalculator::subtract($stock->qty_available, $actualQty);
+
+                            DB::table('product_stocks')
+                                ->where('id', $stock->id)
+                                ->update(['qty_available' => clone \App\Modules\Sales\Services\FinancialCalculator::of($qtyAfterStr)->toBigDecimal()]);
+
+                            DB::table('stock_history')->insert([
+                                'business_id' => $businessId,
+                                'product_id' => $item['product_id'],
+                                'location_id' => $validated['location_id'],
+                                'event_type' => 'Decrease',
+                                'quantity_adjusted' => '-' . $actualQty,
+                                'qty_before' => $qtyBeforeStr,
+                                'qty_after' => $qtyAfterStr,
+                                'reason' => 'Sale (INV: ' . $invoiceNo . ')',
+                                'user_id' => $request->user()->id,
+                                'transaction_id' => $transactionId,
+                                'transaction_line_id' => $lineId,
+                                'created_at' => Carbon::now(),
+                                'updated_at' => Carbon::now(),
                             ]);
+
+                            $lineCogs = $finalCogsMap[$item['product_id']] ?? 0;
+                            $totalCogs = $totalCogs->plus($lineCogs);
                         }
 
-                        $qtyBeforeStr = (string) \App\Modules\Sales\Services\FinancialCalculator::of($stock->qty_available);
-                        $qtyAfterStr = (string) \App\Modules\Sales\Services\FinancialCalculator::subtract($stock->qty_available, $actualQty);
-
-                        DB::table('product_stocks')->where('id', $stock->id)
-                            ->update(['qty_available' => $qtyAfterStr, 'updated_at' => Carbon::now()]);
-
-                        $auditService = app(\App\Modules\Security\Services\ForensicAuditService::class);
-                        $auditService->snapshot(
-                            'ProductStock',
-                            $stock->id,
-                            'sale_checkout',
-                            'deduct_stock',
-                            ['qty_available' => $qtyBeforeStr],
-                            ['qty_available' => $qtyAfterStr],
-                            request()->path()
-                        );
+                        if (\Illuminate\Support\Facades\Schema::hasTable('audit_logs')) {
+                            $auditService = app(\App\Modules\Security\Services\ForensicAuditService::class);
+                            $auditService->snapshot(
+                                'ProductStock',
+                                $stock->id,
+                                'sale_checkout',
+                                'deduct_stock',
+                                ['qty_available' => $qtyBeforeStr],
+                                ['qty_available' => $qtyAfterStr],
+                                request()->path()
+                            );
+                        }
                     }
                     
-                    if ($isPosting && !empty($item['serial_numbers'])) {
-                        if (count($item['serial_numbers']) !== (int)$item['quantity']) {
-                            throw new \Exception('Number of selected serials (' . count($item['serial_numbers']) . ') does not match cart quantity (' . $item['quantity'] . ') for product ID ' . $item['product_id']);
+                    if ($isPosting && (!empty($item['serial_numbers']) || !empty($item['imei_numbers']))) {
+                        $serials = $item['serial_numbers'] ?? [];
+                        $imeis = $item['imei_numbers'] ?? [];
+                        
+                        $maxTracking = max(count($serials), count($imeis));
+                        if ($maxTracking !== (int)$item['quantity']) {
+                            throw new \Exception('Number of selected tracking numbers (' . $maxTracking . ') does not match cart quantity (' . $item['quantity'] . ') for product ID ' . $item['product_id']);
                         }
 
                         // Ghost Serial / Double-Sale Protection
-                        $exists = DB::table('transaction_item_serials')
-                            ->whereIn('serial_number', $item['serial_numbers'])
+                        $existsInLedger = DB::table('transaction_item_serials')
+                            ->where(function($q) use ($serials, $imeis) {
+                                if (!empty($serials)) $q->orWhereIn('serial_number', $serials);
+                                if (!empty($imeis)) $q->orWhereIn('imei_number', $imeis);
+                            })
                             ->exists();
 
-                        if ($exists) {
+                        if ($existsInLedger) {
                             return response()->json(['message' => 'FPM Security: Serial/IMEI number already exists in an active asset ledger.'], 422)->throwResponse();
                         }
 
-                        foreach ($item['serial_numbers'] as $serial) {
+                        // Verify against Available stock with pessimistic locking
+                        $availableSerials = DB::table('inventory_item_serials')
+                            ->where('business_id', $businessId)
+                            ->where('product_id', $item['product_id'])
+                            ->where('status', 'Available')
+                            ->where(function($q) use ($serials, $imeis) {
+                                if (!empty($serials)) $q->orWhereIn('serial_number', $serials);
+                                if (!empty($imeis)) $q->orWhereIn('imei_number', $imeis);
+                            })
+                            ->lockForUpdate()
+                            ->get();
+
+                        if ($availableSerials->count() !== $maxTracking) {
+                            throw new \Exception('One or more selected serial/IMEI numbers are invalid or not currently in Available stock. Please verify inventory.');
+                        }
+
+                        for ($i = 0; $i < $maxTracking; $i++) {
+                            $s = $serials[$i] ?? null;
+                            $m = $imeis[$i] ?? null;
+                            
                             DB::table('transaction_item_serials')->insert([
                                 'transaction_item_id' => $lineId,
-                                'serial_number' => $serial,
-                                'imei_number' => null,
+                                'serial_number' => $s ?? $m, // Fallback if one missing
+                                'imei_number' => $m,
                                 'created_at' => Carbon::now(),
                                 'updated_at' => Carbon::now()
                             ]);
                         }
 
-                        $updated = DB::table('product_serials')
-                            ->where('business_id', $businessId)
-                            ->where('product_id', $item['product_id'])
-                            ->whereIn('serial_number', $item['serial_numbers'])
-                            ->where('status', 'available')
+                        $updated = DB::table('inventory_item_serials')
+                            ->whereIn('id', $availableSerials->pluck('id'))
                             ->update([
-                                'status' => 'sold',
-                                'transaction_id' => $transactionId,
-                                'warranty_start_date' => Carbon::now(),
+                                'status' => 'Sold',
+                                'transaction_sell_line_id' => $lineId,
                                 'updated_at' => Carbon::now()
                             ]);
                         
-                        if ($updated !== count($item['serial_numbers'])) {
+                        if ($updated !== $maxTracking) {
                             throw new \Exception('One or more selected serial numbers are no longer available. Please clear them and rescan.');
                         }
                     }
@@ -371,7 +617,7 @@ class TransactionController extends Controller
 
                 // 5. Loyalty Point Earn
                 if ($isPosting && !empty($validated['contact_id']) && $finalTotal->isGreaterThan(0)) {
-                    $pointsEarned = floor((float)$finalTotal->getValue() / 100);
+                    $pointsEarned = floor((float) ((string) $finalTotal) / 100);
                     if ($pointsEarned > 0) {
                         $lastLedger = DB::table('loyalty_point_ledgers')->where('contact_id', $validated['contact_id'])->orderByDesc('id')->first();
                         $runningBalance = ($lastLedger->running_balance ?? 0) + $pointsEarned;
@@ -392,7 +638,7 @@ class TransactionController extends Controller
                 return $transactionId;
             }, 5);
             
-            \Illuminate\Support\Facades\Cache::store('redis')->forget("dashboard_kpis_business_{$businessId}");
+            \Illuminate\Support\Facades\Cache::forget("dashboard_kpis_business_{$businessId}");
 
             // Dispatch Omnichannel Notification / Digital Receipt
             if ($isPosting) {
@@ -416,7 +662,7 @@ class TransactionController extends Controller
 
             return response()->json([
                 'message' => 'Sale processed successfully',
-                'transaction_id' => $transactionId,
+                'transaction_id' => $result,
                 'invoice_no' => $invoiceNo,
                 'subtotal' => \App\Modules\Sales\Services\FinancialCalculator::toFloat($subtotal),
                 'discount' => \App\Modules\Sales\Services\FinancialCalculator::toFloat($discountValue),
@@ -426,6 +672,9 @@ class TransactionController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            if (isset($lock)) {
+                $lock->release();
+            }
             return response()->json(['message' => 'Checkout failed', 'error' => $e->getMessage()], 500);
         }
     }
@@ -761,7 +1010,6 @@ class TransactionController extends Controller
                         'unit_price' => $line->unit_price,
                         'unit_price_inc_tax' => $line->unit_price_inc_tax,
                         'item_tax' => $line->item_tax,
-                        'dosage_instructions' => $line->dosage_instructions,
                         'created_at' => Carbon::now(),
                         'updated_at' => Carbon::now(),
                     ]);
@@ -894,3 +1142,4 @@ class TransactionController extends Controller
         }
     }
 }
+

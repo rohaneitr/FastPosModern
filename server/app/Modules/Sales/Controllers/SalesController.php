@@ -221,7 +221,7 @@ class SalesController extends Controller
             }, 5);
 
             if ($validated['status'] === 'final' && !($validated['is_quotation'] ?? false)) {
-                \Illuminate\Support\Facades\Cache::store('redis')->forget("dashboard_kpis_business_{$businessId}");
+                \Illuminate\Support\Facades\Cache::forget("dashboard_kpis_business_{$businessId}");
             }
 
             return response()->json([
@@ -372,7 +372,7 @@ class SalesController extends Controller
             }
 
             DB::commit();
-            \Illuminate\Support\Facades\Cache::store('redis')->forget("dashboard_kpis_business_{$businessId}");
+            \Illuminate\Support\Facades\Cache::forget("dashboard_kpis_business_{$businessId}");
             
             return response()->json(['message' => 'Converted to sale', 'invoice_no' => $invoiceNo]);
 
@@ -499,3 +499,4 @@ class SalesController extends Controller
         return response()->json($payments);
     }
 }
+

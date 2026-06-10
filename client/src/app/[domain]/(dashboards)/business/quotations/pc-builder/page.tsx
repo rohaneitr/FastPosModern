@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { useRouter } from 'next/navigation';
+import { ModuleGuard } from '@/components/layout/module-guard';
 
 const CATEGORY_SLOTS = [
   { id: 'cpu', label: 'Processor (CPU)', icon: '🧠', keyword: 'Processor' },
@@ -33,15 +34,6 @@ export default function PcBuilderPage() {
   const [businessData, setBusinessData] = useState({ name: 'FastPOS', mobile: '' });
 
   useEffect(() => {
-    // Check SaaS Active Modules Guard
-    const userJson = localStorage.getItem('fastpos_user');
-    if (userJson) {
-      const user = JSON.parse(userJson);
-      if (user.business?.active_modules && !user.business.active_modules.includes('pc_builder')) {
-        router.replace('/business');
-        return;
-      }
-    }
     fetchProducts();
     fetchContacts();
     fetchSettings();
@@ -152,12 +144,13 @@ export default function PcBuilderPage() {
     : [];
 
   return (
-    <div className="flex h-full gap-6 animate-in fade-in pb-10">
-      {toast && (
-        <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-full shadow-2xl font-semibold flex items-center gap-3 animate-in slide-in-from-top-10 backdrop-blur-md border ${toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' : 'bg-rose-500/20 text-rose-300 border-rose-500/50'}`}>
-          {toast.message}
-        </div>
-      )}
+    <ModuleGuard moduleSlug="hardware_builder">
+      <div className="flex h-full gap-6 animate-in fade-in pb-10">
+        {toast && (
+          <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-full shadow-2xl font-semibold flex items-center gap-3 animate-in slide-in-from-top-10 backdrop-blur-md border ${toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' : 'bg-rose-500/20 text-rose-300 border-rose-500/50'}`}>
+            {toast.message}
+          </div>
+        )}
 
       {/* Main PC Builder Area */}
       <div className="flex-[3] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-4">
@@ -389,6 +382,7 @@ export default function PcBuilderPage() {
           html, body { background: white !important; }
         }
       `}} />
-    </div>
+      </div>
+    </ModuleGuard>
   );
 }
