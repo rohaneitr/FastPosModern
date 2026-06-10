@@ -41,46 +41,49 @@ Route::prefix('v1')->group(function () {
             Route::middleware('role:BusinessAdmin')->group(function () {
                 Route::post('/tenant/subscription/change-plan', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'changePlan']);
             });
-        // ---- BUSINESS STAFF ----
-        
 
-
-
-
-
-        // Sales & CRM
-        Route::middleware('role_or_permission:BusinessAdmin|Cashier')->group(function () {
-
-            // Sync Engine (Web & Mobile Offline)
-            Route::get('/sync/pull', [\App\Modules\Tenant\Controllers\SyncController::class, 'pull']);
-            Route::post('/sync/push', [\App\Modules\Tenant\Controllers\SyncController::class, 'push']);
-
-            // Inventory Transfer
-            Route::post('/tenant/inventory/transfer', [\App\Modules\Catalog\Controllers\InventoryController::class, 'transfer']);
-
-            // Reports (Admin/Manager ONLY)
-            Route::middleware(['permission:view_reports'])->group(function () {
-                Route::get('/tenant/reports/profit-loss', [\App\Modules\Reports\Controllers\FinancialReportController::class, 'profitAndLoss']);
-                Route::get('/tenant/reports/valuation', [\App\Modules\Reports\Controllers\FinancialReportController::class, 'valuation']);
-            });
-
-            // Sales & CRM (Cashier allowed, but Hardware Locked)
-            Route::middleware(['permission:process_sales', 'hardware_lock'])->group(function () {
+            // ================================================================
+            // POS OPERATIONS — pos.access (Cashier + Admin)
+            // Hardware-locked to registered terminal. Shadow logged.
+            // ================================================================
+            Route::middleware(['permission:pos.access', 'hardware_lock', 'rbac.shadow:pos.access'])->group(function () {
                 Route::post('/tenant/sales/checkout', [\App\Modules\Sales\Controllers\TransactionController::class, 'checkout'])->middleware('throttle:checkout');
                 Route::get('/tenant/registers/status', [\App\Modules\Sales\Controllers\RegisterController::class, 'status']);
                 Route::post('/tenant/registers/open', [\App\Modules\Sales\Controllers\RegisterController::class, 'open']);
                 Route::post('/tenant/registers/close', [\App\Modules\Sales\Controllers\RegisterController::class, 'close']);
             });
 
-            // Procurement
-            Route::middleware(['permission:manage_purchases'])->group(function () {
+            // ================================================================
+            // SALES DATA & SYNC — sales.manage (Cashier + Admin + Accountant)
+            // ================================================================
+            Route::middleware(['permission:sales.manage', 'rbac.shadow:sales.manage'])->group(function () {
+                Route::get('/sync/pull', [\App\Modules\Tenant\Controllers\SyncController::class, 'pull']);
+                Route::post('/sync/push', [\App\Modules\Tenant\Controllers\SyncController::class, 'push']);
+            });
+
+            // ================================================================
+            // INVENTORY OPERATIONS — inventory.manage (Admin + InventoryManager)
+            // Previously exposed to Cashiers via broad role group. Now fixed.
+            // Controller-level Gate::authorize also added as defense-in-depth.
+            // ================================================================
+            Route::middleware(['permission:inventory.manage', 'rbac.shadow:inventory.manage'])->group(function () {
+                Route::post('/tenant/inventory/transfer', [\App\Modules\Catalog\Controllers\InventoryController::class, 'transfer']);
+            });
+
+            // ================================================================
+            // REPORTS — reports.manage (Admin + Accountant)
+            // ================================================================
+            Route::middleware(['permission:reports.manage', 'rbac.shadow:reports.manage'])->group(function () {
+                Route::get('/tenant/reports/profit-loss', [\App\Modules\Reports\Controllers\FinancialReportController::class, 'profitAndLoss']);
+                Route::get('/tenant/reports/valuation', [\App\Modules\Reports\Controllers\FinancialReportController::class, 'valuation']);
+            });
+
+            // ================================================================
+            // PROCUREMENT — products.manage (Admin + InventoryManager)
+            // ================================================================
+            Route::middleware(['permission:products.manage', 'rbac.shadow:products.manage'])->group(function () {
                 Route::post('/tenant/purchases/receive', [\App\Modules\Procurement\Controllers\PurchaseController::class, 'receive']);
             });
-        });
-
-
-
-
         });
     });
 

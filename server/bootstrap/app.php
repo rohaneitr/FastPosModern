@@ -34,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'module.access' => \App\Http\Middleware\CheckModuleAccess::class,
             'entitlement' => \App\Http\Middleware\EntitlementMiddleware::class,
             'hardware_lock' => \App\Http\Middleware\VerifyHardwareHash::class,
+            'rbac.shadow' => \App\Http\Middleware\RbacShadowLogger::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

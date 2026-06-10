@@ -15,6 +15,10 @@ class InventoryController extends Controller
      */
     public function transfer(Request $request)
     {
+        // Defense-in-Depth: enforce permission at controller layer independently of route middleware.
+        // This ensures Inventory Transfer cannot be accessed regardless of route misconfiguration.
+        \Illuminate\Support\Facades\Gate::authorize('inventory.manage');
+
         $businessId = $request->user()->business_id;
 
         $validated = $request->validate([

@@ -37,28 +37,28 @@ export function CommandPalette() {
       icon: <ShoppingCart className="w-4 h-4 mr-2" />,
       shortcut: "T",
       perform: () => router.push("/terminal"),
-      permission: "process_sales",
+      permission: "pos.access",
     },
     {
       id: "inventory_transfer",
       name: "Transfer Stock (Downtown to Uptown)",
       icon: <Package className="w-4 h-4 mr-2" />,
       perform: () => router.push("/business/inventory/transfer"),
-      permission: "manage_inventory",
+      permission: "inventory.manage",
     },
     {
       id: "ledger",
       name: "Accounting Ledger",
       icon: <FileText className="w-4 h-4 mr-2" />,
       perform: () => router.push("/business/reports/ledger"),
-      permission: "view_reports",
+      permission: "reports.manage",
     },
     {
       id: "purchases",
       name: "Receive Purchase Order (WAC)",
       icon: <Activity className="w-4 h-4 mr-2" />,
       perform: () => router.push("/business/purchases/create"),
-      permission: "manage_purchases",
+      permission: "products.manage",
     },
   ].filter(action => hasPermission(action.permission));
 
