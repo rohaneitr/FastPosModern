@@ -19,9 +19,9 @@ Route::middleware(['auth:sanctum', 'module.access'])->group(function () {
         Route::apiResource('brands', \App\Modules\Inventory\Controllers\BrandController::class)->only(['store', 'update']);
         
         // Strict Spatie Guardrails for Destructive Actions
-        Route::delete('products/{product}', [\App\Modules\Inventory\Controllers\ProductController::class, 'destroy'])->middleware('permission:product.delete');
-        Route::delete('categories/{category}', [\App\Modules\Inventory\Controllers\CategoryController::class, 'destroy'])->middleware('permission:category.delete');
-        Route::delete('brands/{brand}', [\App\Modules\Inventory\Controllers\BrandController::class, 'destroy'])->middleware('permission:brand.delete');
+        Route::delete('products/{product}', [\App\Modules\Inventory\Controllers\ProductController::class, 'destroy'])->middleware('permission:products.manage');
+        Route::delete('categories/{category}', [\App\Modules\Inventory\Controllers\CategoryController::class, 'destroy'])->middleware('permission:products.manage');
+        Route::delete('brands/{brand}', [\App\Modules\Inventory\Controllers\BrandController::class, 'destroy'])->middleware('permission:products.manage');
     });
 
     // Core Inventory Domain

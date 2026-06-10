@@ -55,11 +55,11 @@ export const businessMenuItems: SidebarMenuItem[] = [
   { name: 'Warranty & RMA', path: '/business/warranty', icon: Shield, moduleAccess: ['serial_tracking'] },
 
   // ── Back Office ──
-  { name: 'Accounting', i18nKey: 'nav.accounting', path: '/business/accounting', icon: Calculator, moduleAccess: ['accounting', 'finance'], permission: 'view_reports', section: 'Back Office' },
+  { name: 'Accounting', i18nKey: 'nav.accounting', path: '/business/accounting', icon: Calculator, moduleAccess: ['accounting', 'finance'], permission: 'reports.manage', section: 'Back Office' },
   { name: 'Staff & HR', path: '/business/hr/employees', icon: UserCog, moduleAccess: ['hr', 'human resources'], adminOnly: true },
   { name: 'Payroll', path: '/business/hr/payroll', icon: Receipt, moduleAccess: ['hr', 'human resources'], adminOnly: true },
   { name: 'Users & Roles', i18nKey: 'nav.usersRoles', path: '/business/users', icon: Users, moduleAccess: ['users', 'iam', 'roles'], adminOnly: true },
-  { name: 'Reports', i18nKey: 'nav.reports', path: '/business/reports', icon: BarChart3, moduleAccess: ['reports', 'analytics'], permission: 'view_reports' },
+  { name: 'Reports', i18nKey: 'nav.reports', path: '/business/reports', icon: BarChart3, moduleAccess: ['reports', 'analytics'], permission: 'reports.manage' },
   { name: 'Branches & Locations', path: '/business/settings/locations', icon: Building2, adminOnly: true },
   { name: 'Settings', i18nKey: 'nav.settings', path: '/business/settings', icon: Settings, moduleAccess: ['settings'], adminOnly: true },
   { name: 'Subscription', path: '/business/billing', icon: Star, adminOnly: true },

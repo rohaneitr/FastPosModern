@@ -8,7 +8,7 @@ Route::middleware(['auth:sanctum', 'subscribed', 'module.access:core_procurement
         Route::apiResource('purchases', \App\Modules\Procurement\Controllers\PurchaseController::class)->except(['destroy']);
         
         // Strict Spatie Guardrails for Destructive Actions
-        Route::delete('suppliers/{supplier}', [\App\Modules\Procurement\Controllers\SupplierController::class, 'destroy'])->middleware('permission:supplier.delete');
-        Route::delete('purchases/{purchase}', [\App\Modules\Procurement\Controllers\PurchaseController::class, 'destroy'])->middleware('permission:purchase.delete');
+        Route::delete('suppliers/{supplier}', [\App\Modules\Procurement\Controllers\SupplierController::class, 'destroy'])->middleware('permission:products.manage');
+        Route::delete('purchases/{purchase}', [\App\Modules\Procurement\Controllers\PurchaseController::class, 'destroy'])->middleware('permission:products.manage');
     });
 });
