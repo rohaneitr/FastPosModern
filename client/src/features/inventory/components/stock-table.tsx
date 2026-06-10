@@ -7,6 +7,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { TableRowSkeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PackageSearch } from 'lucide-react';
+import { FeatureGate } from '@/components/common/FeatureGate';
 
 interface StockTableProps {
   stocks: any[];
@@ -98,22 +99,26 @@ export function StockTable({
                     </td>
                     <td className="p-4 text-center">
                       <div className="flex gap-2 justify-center">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => onAdjust(s)}
-                          className="text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/20"
-                        >
-                          Adjust
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => onTransfer(s)}
-                          className="text-blue-400 hover:bg-blue-500/10 border-blue-500/20"
-                        >
-                          Transfer
-                        </Button>
+                        <FeatureGate permission="inventory.adjust">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onAdjust(s)}
+                            className="text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/20"
+                          >
+                            Adjust
+                          </Button>
+                        </FeatureGate>
+                        <FeatureGate permission="inventory.transfer">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onTransfer(s)}
+                            className="text-blue-400 hover:bg-blue-500/10 border-blue-500/20"
+                          >
+                            Transfer
+                          </Button>
+                        </FeatureGate>
                       </div>
                     </td>
                   </tr>

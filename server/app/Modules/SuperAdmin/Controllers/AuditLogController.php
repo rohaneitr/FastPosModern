@@ -20,7 +20,7 @@ class AuditLogController extends Controller
         ]);
 
         // CRITICAL: Scope Bypass
-        $query = AuditLog::withoutGlobalScopes()->with(['business:id,company_name', 'user:id,name,email']);
+        $query = AuditLog::withoutGlobalScopes()->with(['business:id,name', 'user:id,first_name,last_name,email']);
 
         // Filtering
         if (!empty($validated['tenant_id'])) {
@@ -36,7 +36,8 @@ class AuditLogController extends Controller
                 $q->where('auditable_type', 'LIKE', '%' . $validated['search'] . '%')
                   ->orWhere('ip_address', 'LIKE', '%' . $validated['search'] . '%')
                   ->orWhereHas('user', function($uq) use ($validated) {
-                      $uq->where('name', 'LIKE', '%' . $validated['search'] . '%')
+                      $uq->where('first_name', 'LIKE', '%' . $validated['search'] . '%')
+                         ->orWhere('last_name', 'LIKE', '%' . $validated['search'] . '%')
                          ->orWhere('email', 'LIKE', '%' . $validated['search'] . '%');
                   });
             });
@@ -54,12 +55,12 @@ class AuditLogController extends Controller
         $logs->getCollection()->transform(function ($log) {
             return [
                 'id' => $log->id,
-                'causer_name' => $log->user ? $log->user->name : 'System',
+                'causer_name' => $log->user ? trim($log->user->first_name . ' ' . $log->user->last_name) : 'System',
                 'event' => $log->event,
                 'description' => "Performed {$log->event} on {$log->auditable_type}",
                 'subject_type' => class_basename($log->auditable_type),
                 'subject_id' => $log->auditable_id,
-                'subject_label' => $log->business ? $log->business->company_name : null,
+                'subject_label' => $log->business ? $log->business->name : null,
                 'ip_address' => $log->ip_address,
                 'properties' => [
                     'old' => $log->old_values,

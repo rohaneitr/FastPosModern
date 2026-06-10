@@ -7,6 +7,7 @@ use App\Modules\SuperAdmin\Models\GlobalSetting;
 use App\Modules\SuperAdmin\Requests\UpdateGlobalSettingsRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Artisan;
 
 class GlobalSettingsController extends Controller
 {
@@ -53,15 +54,36 @@ class GlobalSettingsController extends Controller
             $this->saveSetting('smtp_password', $validated['smtp_password'], 'smtp', true);
         }
 
-        // Handle File Uploads
+        $disk = env('FILESYSTEM_DISK', 'public');
+
         if ($request->hasFile('saas_logo')) {
-            $path = $request->file('saas_logo')->store('branding', 'public');
-            $this->saveSetting('saas_logo', '/storage/' . $path, 'branding');
+            $path = $request->file('saas_logo')->store('branding', $disk);
+            $this->saveSetting('saas_logo', $path, 'branding');
+            $this->saveSetting('saas_logo_disk', $disk, 'branding');
+        }
+
+        // Feature Flags
+        if (isset($validated['enable_registration'])) {
+            $this->saveSetting('enable_registration', $validated['enable_registration'], 'system');
+        }
+
+        if (isset($validated['maintenance_mode'])) {
+            $this->saveSetting('maintenance_mode', $validated['maintenance_mode'], 'system');
+            
+            if ($validated['maintenance_mode']) {
+                Artisan::call('down', [
+                    '--secret' => 'superadmin-bypass',
+                    '--render' => 'errors::503'
+                ]);
+            } else {
+                Artisan::call('up');
+            }
         }
 
         if ($request->hasFile('favicon')) {
-            $path = $request->file('favicon')->store('branding', 'public');
-            $this->saveSetting('favicon', '/storage/' . $path, 'branding');
+            $path = $request->file('favicon')->store('branding', $disk);
+            $this->saveSetting('favicon', $path, 'branding');
+            $this->saveSetting('favicon_disk', $disk, 'branding');
         }
 
         // Purge Cache
@@ -98,7 +120,82 @@ class GlobalSettingsController extends Controller
             foreach ($settings as $setting) {
                 $mapped[$setting->key] = $setting->value; // Accessor handles decryption
             }
+
+            // Phase 1: Dynamic S3 Architecture (URL Resolver)
+            if (isset($mapped['saas_logo']) && !str_starts_with($mapped['saas_logo'], 'http') && !str_starts_with($mapped['saas_logo'], '/storage/')) {
+                $disk = $mapped['saas_logo_disk'] ?? 'public';
+                $mapped['saas_logo'] = \Illuminate\Support\Facades\Storage::disk($disk)->url($mapped['saas_logo']);
+            }
+
+            if (isset($mapped['favicon']) && !str_starts_with($mapped['favicon'], 'http') && !str_starts_with($mapped['favicon'], '/storage/')) {
+                $disk = $mapped['favicon_disk'] ?? 'public';
+                $mapped['favicon'] = \Illuminate\Support\Facades\Storage::disk($disk)->url($mapped['favicon']);
+            }
+
             return $mapped;
         });
+    }
+
+    /**
+     * Phase 2: SMTP Handshake Verification (With Timeout Lock)
+     */
+    public function testSmtp(Request $request)
+    {
+        $request->validate([
+            'smtp_host' => 'required|string',
+            'smtp_port' => 'required|numeric',
+            'smtp_username' => 'nullable|string',
+            'smtp_password' => 'nullable|string',
+            'smtp_encryption' => 'nullable|in:tls,ssl,'
+        ]);
+
+        try {
+            $host = $request->smtp_host;
+            $port = $request->smtp_port;
+            $enc = $request->smtp_encryption === 'ssl' ? 'smtps' : 'smtp';
+            
+            // Build DSN
+            $dsnString = "{$enc}://";
+            if ($request->smtp_username) {
+                $dsnString .= rawurlencode($request->smtp_username);
+                if ($request->smtp_password && $request->smtp_password !== '********') {
+                    $dsnString .= ':' . rawurlencode($request->smtp_password);
+                } elseif ($request->smtp_password === '********') {
+                    // Fetch real password from DB if they submitted the mask
+                    $setting = GlobalSetting::where('key', 'smtp_password')->first();
+                    if ($setting) {
+                        $dsnString .= ':' . rawurlencode($setting->value);
+                    }
+                }
+                $dsnString .= '@';
+            }
+            $dsnString .= "{$host}:{$port}";
+
+            $dsn = \Symfony\Component\Mailer\Transport\Dsn::fromString($dsnString);
+            $factory = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransportFactory();
+            $transport = $factory->create($dsn);
+
+            // Access underlying stream and set strict 5-second timeout
+            if (method_exists($transport, 'getStream')) {
+                $stream = $transport->getStream();
+                if (method_exists($stream, 'setTimeout')) {
+                    $stream->setTimeout(5.0);
+                }
+            }
+
+            // Test Handshake (Timeout will trigger here)
+            $transport->start();
+
+            return response()->json(['message' => 'SMTP Handshake Successful. Connection verified.']);
+
+        } catch (\Symfony\Component\Mailer\Exception\TransportExceptionInterface $e) {
+            $msg = $e->getMessage();
+            if (str_contains(strtolower($msg), 'timed out') || str_contains(strtolower($msg), 'timeout')) {
+                return response()->json(['message' => 'Connection timed out. Port may be blocked by firewall.'], 408);
+            }
+            return response()->json(['message' => 'SMTP Handshake Failed: ' . $msg], 422);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Configuration Error: ' . $e->getMessage()], 422);
+        }
     }
 }

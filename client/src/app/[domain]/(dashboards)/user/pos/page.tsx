@@ -17,6 +17,7 @@ import { CloseRegisterModal } from '@/features/pos/components/close-register-mod
 import { SerialSelectionModal } from '@/features/pos/components/serial-selection-modal';
 import { ReceiptModal } from '@/features/pos/components/receipt-modal';
 import { QuotationsModal } from '@/features/pos/components/quotations-modal';
+import { ConnectivityStatus } from '@/features/pos/components/connectivity-status';
 
 export default function POSPage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -49,7 +50,11 @@ export default function POSPage() {
     locationId,
     registerIsOpen: !!registerStatus?.is_open,
     onSerialRequired: (item) => setActiveSerialItem(item),
-    onSuccess: (data) => setReceiptData(data)
+    onSuccess: (data) => {
+      clearCart();
+      setConvertQuotationId(null);
+      setReceiptData(data);
+    }
   });
 
   // Barcode / Shortcuts
@@ -100,6 +105,10 @@ export default function POSPage() {
     }
     addItem(product);
     toast.success(`Added ${product.name}`);
+
+    if (product.enable_sr_no == 1 || product.enable_imei == 1) {
+      setActiveSerialItem(product);
+    }
   };
 
   const handleCheckoutTrigger = (params: any) => {
@@ -108,6 +117,7 @@ export default function POSPage() {
 
   return (
     <div className="flex h-full gap-4 relative">
+      <ConnectivityStatus />
       <DeviceLockedOverlay 
         deviceState={deviceLocked}
         onManualActivate={manualActivate}
@@ -170,8 +180,6 @@ export default function POSPage() {
         receiptData={receiptData}
         onClose={() => {
           setReceiptData(null);
-          clearCart();
-          setConvertQuotationId(null);
         }}
       />
 

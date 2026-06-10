@@ -120,11 +120,26 @@ class SalesController extends Controller
         try {
             $result = DB::transaction(function () use ($validated, $businessId, $request) {
                 $subtotal = \App\Modules\Sales\Services\FinancialCalculator::of(0);
-                foreach ($validated['items'] as $item) {
+                foreach ($validated['items'] as &$item) {
+                    // ZERO TRUST: Strip frontend price payload and fetch true price from database
+                    $variationQuery = DB::table('variations')->where('product_id', $item['product_id']);
+                    if (!empty($item['variation_id'])) {
+                        $variationQuery->where('id', $item['variation_id']);
+                    }
+                    $variation = $variationQuery->first();
+                    
+                    if (!$variation) {
+                        throw new \Exception('Invalid product variation for ID: ' . $item['product_id']);
+                    }
+                    
+                    // Override the price
+                    $item['unit_price'] = $variation->sell_price_inc_tax ?? 0;
+
                     $lineTotal = \App\Modules\Sales\Services\FinancialCalculator::calculateLineTotal($item['unit_price'], $item['quantity']);
                     $lineDisc = \App\Modules\Sales\Services\FinancialCalculator::of($item['discount'] ?? 0);
                     $subtotal = $subtotal->plus(\App\Modules\Sales\Services\FinancialCalculator::applyDiscount($lineTotal, $lineDisc));
                 }
+                unset($item); // break reference
 
                 $taxRate = $validated['tax_rate'] ?? 0;
                 $discValue = \App\Modules\Sales\Services\FinancialCalculator::of(0);
@@ -171,11 +186,13 @@ class SalesController extends Controller
 
                 $lines = [];
                 foreach ($validated['items'] as $item) {
+                    // Unit price has already been overridden by Zero-Trust DB fetch
                     $lineTotal = $item['unit_price'] * $item['quantity'];
                     $lineDisc  = $item['discount'] ?? 0;
                     $lines[] = [
                         'transaction_id'    => $txId,
                         'product_id'        => $item['product_id'],
+                        'variation_id'      => $item['variation_id'] ?? null,
                         'quantity'          => $item['quantity'],
                         'unit_price'        => $item['unit_price'],
                         'unit_price_inc_tax'=> (string) \App\Modules\Sales\Services\FinancialCalculator::add($item['unit_price'], \App\Modules\Sales\Services\FinancialCalculator::calculateTax($item['unit_price'], $taxRate)),
@@ -266,10 +283,26 @@ class SalesController extends Controller
             DB::beginTransaction();
 
             $subtotal = \App\Modules\Sales\Services\FinancialCalculator::of(0);
-            foreach ($validated['items'] as $item) {
+            foreach ($validated['items'] as &$item) {
+                // ZERO TRUST: Strip frontend price payload and fetch true price from database
+                $variationQuery = DB::table('variations')->where('product_id', $item['product_id']);
+                if (!empty($item['variation_id'])) {
+                    $variationQuery->where('id', $item['variation_id']);
+                }
+                $variation = $variationQuery->first();
+                
+                if (!$variation) {
+                    throw new \Exception('Invalid product variation for ID: ' . $item['product_id']);
+                }
+                
+                // Override the price
+                $item['unit_price'] = $variation->sell_price_inc_tax ?? 0;
+
                 $lineTotal = \App\Modules\Sales\Services\FinancialCalculator::calculateLineTotal($item['unit_price'], $item['quantity']);
                 $subtotal = $subtotal->plus($lineTotal);
             }
+            unset($item); // break reference
+            
             $taxAmount  = \App\Modules\Sales\Services\FinancialCalculator::calculateTax($subtotal, $tx->tax_rate ?? 0);
             $finalTotal = $subtotal->plus($taxAmount);
 
@@ -286,13 +319,15 @@ class SalesController extends Controller
 
             $lines = [];
             foreach ($validated['items'] as $item) {
+                $itemTax = \App\Modules\Sales\Services\FinancialCalculator::calculateTax($item['unit_price'], $tx->tax_rate ?? 0);
                 $lines[] = [
                     'transaction_id'    => $id,
                     'product_id'        => $item['product_id'],
+                    'variation_id'      => $item['variation_id'] ?? null,
                     'quantity'          => $item['quantity'],
                     'unit_price'        => $item['unit_price'],
-                    'unit_price_inc_tax'=> $item['unit_price'],
-                    'item_tax'          => 0,
+                    'unit_price_inc_tax'=> (string) \App\Modules\Sales\Services\FinancialCalculator::add($item['unit_price'], $itemTax),
+                    'item_tax'          => (string) $itemTax,
                     'created_at'        => Carbon::now(),
                     'updated_at'        => Carbon::now(),
                 ];

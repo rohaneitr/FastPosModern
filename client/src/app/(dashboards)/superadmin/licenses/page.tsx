@@ -71,6 +71,13 @@ export default function SuperadminLicenses() {
   const [plans, setPlans]       = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
   const [showModal, setShowModal] = useState(false);
+  
+  // MDM Modal States
+  const [showDeviceModal, setShowDeviceModal] = useState(false);
+  const [selectedBusinessId, setSelectedBusinessId] = useState<number | null>(null);
+  const [businessDevices, setBusinessDevices] = useState<any[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+
   const [form, setForm]         = useState({ tenant_id: '', plan_id: '' });
   const [submitting, setSubmitting] = useState(false);
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
@@ -118,10 +125,36 @@ export default function SuperadminLicenses() {
   const toggleStatus = async (id: number) => {
     try {
       const res = await api.put(`/superadmin/licenses/${id}/toggle-status`);
-      setLicenses(licenses.map(lic => lic.id === id ? { ...lic, ...res.data.license } : lic));
+      const updatedStatus = res.data.business.is_active ? 'active' : 'suspended';
+      setLicenses(licenses.map(lic => lic.id === id ? { ...lic, status: updatedStatus } : lic));
       showToast('License status updated.');
     } catch (error: any) {
       showToast(error.response?.data?.message || 'Failed to toggle status.', false);
+    }
+  };
+
+  const fetchDevices = async (businessId: number) => {
+    setLoadingDevices(true);
+    setSelectedBusinessId(businessId);
+    setShowDeviceModal(true);
+    try {
+      const res = await api.get(`/superadmin/businesses/${businessId}/devices`);
+      setBusinessDevices(res.data);
+    } catch (error: any) {
+      showToast('Failed to fetch devices.', false);
+    } finally {
+      setLoadingDevices(false);
+    }
+  };
+
+  const revokeDevice = async (deviceId: number) => {
+    try {
+      await api.patch(`/superadmin/devices/${deviceId}/revoke`);
+      setBusinessDevices(prev => prev.map(d => d.device_id === deviceId ? { ...d, status: 'revoked' } : d));
+      showToast('Device revoked & session purged.');
+      fetchData(); // Refresh main table active counts
+    } catch (error: any) {
+      showToast('Failed to revoke device.', false);
     }
   };
 
@@ -267,15 +300,23 @@ export default function SuperadminLicenses() {
 
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => toggleStatus(lic.id)}
-                          className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all
-                            ${isActive
-                              ? 'border-rose-500/30 text-rose-400 hover:bg-rose-500/10'
-                              : 'border-teal-500/30 text-teal-400 hover:bg-teal-500/10'}`}
-                        >
-                          {isActive ? 'Suspend' : 'Reactivate'}
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => fetchDevices(lic.id)}
+                            className="text-xs font-bold px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 transition-all"
+                          >
+                            View Devices
+                          </button>
+                          <button
+                            onClick={() => toggleStatus(lic.id)}
+                            className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all
+                              ${isActive
+                                ? 'border-rose-500/30 text-rose-400 hover:bg-rose-500/10'
+                                : 'border-teal-500/30 text-teal-400 hover:bg-teal-500/10'}`}
+                          >
+                            {isActive ? 'Suspend' : 'Reactivate'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -352,6 +393,86 @@ export default function SuperadminLicenses() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MDM Device Modal */}
+      {showDeviceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-surface border border-border w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-6 border-b border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center text-indigo-400">📱</div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Device Management</h2>
+                  <p className="text-sm text-text-muted">Business #{selectedBusinessId} - View and revoke active devices.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowDeviceModal(false)} className="text-text-muted hover:text-white transition-colors">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 bg-background/30">
+              {loadingDevices ? (
+                <div className="flex flex-col items-center justify-center h-48 gap-4 text-text-muted">
+                  <div className="w-8 h-8 border-2 border-indigo-500/50 border-t-indigo-500 rounded-full animate-spin"/>
+                  <p>Loading devices...</p>
+                </div>
+              ) : businessDevices.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 gap-3 text-text-muted text-center">
+                  <div className="text-4xl opacity-50">📴</div>
+                  <p className="font-semibold text-white">No active devices found.</p>
+                  <p className="text-sm max-w-sm">This tenant has not activated any devices with their license key yet.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {businessDevices.map((d: any) => {
+                    const isRevoked = d.status === 'revoked';
+                    return (
+                      <div key={d.device_id} className={`flex flex-col rounded-xl border p-4 transition-all ${isRevoked ? 'bg-rose-500/5 border-rose-500/20 opacity-75' : 'bg-surface border-border hover:border-indigo-500/30'}`}>
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h3 className="font-bold text-white flex items-center gap-2">
+                              {d.device_name || 'Unknown POS'}
+                              {isRevoked && <span className="text-[10px] uppercase font-black bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-sm">Revoked</span>}
+                            </h3>
+                            <p className="text-xs text-text-muted">{d.os} • {d.ip_address}</p>
+                          </div>
+                          {!isRevoked && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Are you sure you want to permanently revoke ${d.device_name || 'this device'}? The terminal will be instantly locked out.`)) {
+                                  revokeDevice(d.device_id);
+                                }
+                              }}
+                              className="shrink-0 text-xs font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500 hover:text-white px-3 py-1.5 rounded-lg transition-colors border border-rose-500/20"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </div>
+                        <div className="bg-background/50 rounded-lg p-3 space-y-2 mt-auto border border-border/50">
+                          <div>
+                            <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-0.5">Hardware MAC/IMEI</div>
+                            <div className="font-mono text-xs text-amber-300 break-all">{d.hardware_fingerprint}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-0.5">Last Heartbeat</div>
+                            <div className="text-xs text-white">{d.last_heartbeat ? new Date(d.last_heartbeat).toLocaleString() : 'Never'}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-0.5">User Context</div>
+                            <div className="text-xs text-white truncate" title={d.email}>{d.first_name} {d.last_name} ({d.email})</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

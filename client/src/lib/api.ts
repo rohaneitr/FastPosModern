@@ -26,12 +26,23 @@ api.defaults.withCredentials = true;
 api.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 api.defaults.headers.common['Accept'] = 'application/json';
 
-// Request interceptor — attach hardware hash if present
+// Request interceptor — attach hardware hash and tenant boundaries
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const hwHash = localStorage.getItem('pos_hardware_hash');
     if (hwHash) {
       config.headers['X-Device-Hash'] = hwHash;
+    }
+
+    // Global Tenant & Branch Isolation Injection
+    const tenantId = localStorage.getItem('fastpos_tenant_id');
+    const locationId = localStorage.getItem('fastpos_location_id');
+    
+    if (tenantId) {
+      config.headers['X-Tenant-ID'] = tenantId;
+    }
+    if (locationId) {
+      config.headers['X-Location-ID'] = locationId;
     }
   }
   return config;

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { useTranslation, SUPPORTED_LANGUAGES, type LanguageCode } from '@/lib/i18n';
 import { useRateLimitStore } from '@/store/useRateLimitStore';
+import toast from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -49,7 +50,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
-      setError(t('auth.enterBoth'));
+      toast.error(t('auth.enterBoth'));
       return;
     }
     setLoading(true);
@@ -76,7 +77,7 @@ export default function LoginPage() {
       const userData = response.data.user;
 
       if (!userData) {
-        setError(t('auth.unexpectedResponse'));
+        toast.error(t('auth.unexpectedResponse'));
         return;
       }
 
@@ -103,17 +104,18 @@ export default function LoginPage() {
       }
 
       if (roleName === 'SuperAdmin') {
+        toast.success('Logged in successfully');
         router.push('/superadmin');
       } else {
         // Reject non-SuperAdmin users on the Super Admin login portal
         localStorage.removeItem('fastpos_user');
         sessionStorage.removeItem('fastpos_user');
-        setError('Unauthorized: This portal is strictly for Super Admin access.');
+        toast.error('Unauthorized: This portal is strictly for Super Admin access.');
       }
     } catch (err: any) {
       if (err.response?.status === 428 && err.response?.data?.requires_2fa) {
         setRequires2FA(true);
-        setError('');
+        toast.success('Please enter your 2FA code');
         return;
       }
 
@@ -121,16 +123,16 @@ export default function LoginPage() {
         const messages = err.response?.data?.errors;
         if (messages) {
           const firstKey = Object.keys(messages)[0];
-          setError(messages[firstKey]?.[0] || t('auth.validationFailed'));
+          toast.error(messages[firstKey]?.[0] || t('auth.validationFailed'));
         } else {
-          setError(err.response?.data?.message || t('auth.invalidCredentials'));
+          toast.error(err.response?.data?.message || t('auth.invalidCredentials'));
         }
       } else if (err.response?.status === 401) {
-        setError(t('auth.invalidCredentials'));
+        toast.error(t('auth.invalidCredentials'));
       } else if (err.code === 'ERR_NETWORK') {
-        setError(t('auth.networkError'));
+        toast.error(t('auth.networkError'));
       } else {
-        setError(t('auth.invalidCredentials'));
+        toast.error(t('auth.invalidCredentials'));
       }
     } finally {
       setLoading(false);
@@ -139,29 +141,29 @@ export default function LoginPage() {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setError(''); setSuccessMsg('');
+    setLoading(true);
     try {
       await api.post('/forgot-password', { email: resetEmail });
       // Never read a token from the API response — it should only arrive via email.
-      setSuccessMsg('If that email is registered, a reset link has been sent. Please check your inbox.');
+      toast.success('If that email is registered, a reset link has been sent. Please check your inbox.');
       // Keep the form visible so the user sees the confirmation message.
     } catch (err: any) {
       // Show a generic message — don't confirm whether the email exists
-      setSuccessMsg('If that email is registered, a reset link has been sent. Please check your inbox.');
+      toast.success('If that email is registered, a reset link has been sent. Please check your inbox.');
     } finally { setLoading(false); }
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
-    setLoading(true); setError(''); setSuccessMsg('');
+    if (newPassword !== confirmPassword) { toast.error('Passwords do not match.'); return; }
+    setLoading(true);
     try {
       await api.post('/reset-password', { email: resetEmail, token: resetToken, password: newPassword, password_confirmation: confirmPassword });
-      setSuccessMsg('Password reset successfully! You can now log in.');
+      toast.success('Password reset successfully! You can now log in.');
       setForgotMode('off');
       setResetEmail(''); setResetToken(''); setNewPassword(''); setConfirmPassword('');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to reset password.');
+      toast.error(err.response?.data?.message || 'Failed to reset password.');
     } finally { setLoading(false); }
   };
 
@@ -197,14 +199,6 @@ export default function LoginPage() {
         </div>
 
         <div className="glass-card p-7 rounded-2xl shadow-2xl border border-white/[0.06]">
-          {error && (
-            <div className="bg-danger/10 border border-danger/30 text-danger text-sm px-4 py-3 rounded-xl mb-5 flex items-start gap-3">
-              <svg className="w-5 h-5 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
-              <span>{error}</span>
-            </div>
-          )}
 
           <form onSubmit={handleLogin} className="flex flex-col gap-5" autoComplete="off">
             {!requires2FA ? (
@@ -290,17 +284,15 @@ export default function LoginPage() {
             </button>
 
             {forgotMode === 'off' && !requires2FA && (
-              <button type="button" onClick={() => { setForgotMode('request'); setError(''); setSuccessMsg(''); }} className="text-xs text-primary hover:text-primary-hover mt-2 w-full text-center">
+              <button type="button" onClick={() => { setForgotMode('request'); }} className="text-xs text-primary hover:text-primary-hover mt-2 w-full text-center">
                 Forgot Password?
               </button>
             )}
           </form>
 
-          {/* Forgot Password Form */}
           {forgotMode === 'request' && (
             <form onSubmit={handleForgotPassword} className="flex flex-col gap-4 mt-5 pt-5 border-t border-border animate-in fade-in duration-300">
               <p className="text-sm text-text-muted">Enter your email address to receive a password reset token.</p>
-              {successMsg && <p className="text-sm text-success bg-success/10 rounded-lg px-3 py-2">{successMsg}</p>}
               <input type="email" required value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="Email address" className="w-full bg-background/60 border border-border rounded-xl px-4 py-3 text-foreground text-sm outline-none focus:border-primary" />
               <div className="flex gap-2">
                 <button type="submit" disabled={loading} className="flex-1 bg-primary hover:bg-primary-hover text-white py-2.5 rounded-xl text-sm font-semibold">{loading ? 'Sending...' : 'Send Reset Token'}</button>
@@ -312,12 +304,11 @@ export default function LoginPage() {
           {forgotMode === 'reset' && (
             <form onSubmit={handleResetPassword} className="flex flex-col gap-4 mt-5 pt-5 border-t border-border animate-in fade-in duration-300">
               <p className="text-sm text-text-muted">Set your new password.</p>
-              {successMsg && <p className="text-sm text-success bg-success/10 rounded-lg px-3 py-2">{successMsg}</p>}
               <input type="password" required value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="New password" className="w-full bg-background/60 border border-border rounded-xl px-4 py-3 text-foreground text-sm outline-none focus:border-primary" />
               <input type="password" required value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="w-full bg-background/60 border border-border rounded-xl px-4 py-3 text-foreground text-sm outline-none focus:border-primary" />
               <div className="flex gap-2">
                 <button type="submit" disabled={loading} className="flex-1 bg-primary hover:bg-primary-hover text-white py-2.5 rounded-xl text-sm font-semibold">{loading ? 'Resetting...' : 'Reset Password'}</button>
-                <button type="button" onClick={() => { setForgotMode('off'); setError(''); }} className="px-4 py-2.5 rounded-xl text-sm text-text-muted hover:text-foreground">Cancel</button>
+                <button type="button" onClick={() => { setForgotMode('off'); }} className="px-4 py-2.5 rounded-xl text-sm text-text-muted hover:text-foreground">Cancel</button>
               </div>
             </form>
           )}

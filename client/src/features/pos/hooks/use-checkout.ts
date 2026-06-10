@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useCartStore, CartItem } from '@/store/useCartStore';
 import { globalSync } from '@/lib/sync/broadcast';
 import { useEntitlements } from '@/hooks/useEntitlements';
+import { db } from '@/lib/db/db';
 
 export interface CheckoutPayload {
   location_id: number;
@@ -107,6 +108,32 @@ export function useCheckout({ locationId, registerIsOpen, onSerialRequired, onSu
     };
 
     try {
+      if (!navigator.onLine) {
+        const offlineId = crypto.randomUUID();
+        await db.offline_sales_queue.add({
+          uuid: offlineId,
+          payload,
+          status: 'pending_sync',
+          created_at: Date.now()
+        });
+
+        const receiptData = {
+          transaction_id: 'OFFLINE-' + offlineId.split('-')[0],
+          invoice_no: 'OFFLINE-' + Date.now().toString().slice(-6),
+          items: [...items],
+          subtotal: params.subtotal,
+          taxAmount: params.taxAmount,
+          total: params.total,
+          paymentMethod: params.paymentMethod
+        };
+
+        toast.success(`Offline Sale Saved! Invoice: ${receiptData.invoice_no}`);
+        globalSync.broadcast('CART_CLEARED');
+        onSuccess(receiptData);
+        setIsCheckingOut(false);
+        return;
+      }
+
       const response = await api.post('/checkout', payload);
       
       const receiptData = {
@@ -128,12 +155,16 @@ export function useCheckout({ locationId, registerIsOpen, onSerialRequired, onSu
       onSuccess(receiptData);
     } catch (error: any) {
       console.error("Checkout failed", error);
-      if (error.response?.status === 422 && error.response?.data?.errors?.inventory) {
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message;
+
+      if (error.response?.status === 422 && errorMessage.toLowerCase().includes('expired')) {
+        toast.error("Cannot sell: Batch Expired", { style: { background: '#ef4444', color: '#fff' } });
+      } else if (error.response?.status === 422 && error.response?.data?.errors?.inventory) {
         toast.error(`Inventory Error: ${error.response.data.errors.inventory[0]}`);
       } else if (error.response?.status === 402) {
         toast.error("Subscription Expired: Payment required.");
       } else {
-        toast.error(`Checkout failed: ${error.response?.data?.message || error.message}`);
+        toast.error(`Checkout failed: ${errorMessage}`);
       }
     } finally {
       setIsCheckingOut(false);

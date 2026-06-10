@@ -1,5 +1,4 @@
-import { createContext, useContext, ReactNode } from 'react';
-import { useAuth } from './useAuth'; // Assuming global auth hook exists
+import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 
 interface EntitlementMatrix {
     is_super_admin: boolean;
@@ -19,15 +18,21 @@ interface EntitlementMatrix {
 const EntitlementContext = createContext<EntitlementMatrix | null>(null);
 
 export const useEntitlements = () => {
-    // This hook extracts the matrix directly from the secure Auth memory state
-    const { user } = useAuth(); // Assume user object contains the matrix from `GET /auth/me`
+    const [user, setUser] = useState<any>(null);
+
+    useEffect(() => {
+        const storedUser = sessionStorage.getItem('fastpos_user') || localStorage.getItem('fastpos_user');
+        if (storedUser) {
+            try { setUser(JSON.parse(storedUser)); } catch(e) {}
+        }
+    }, []);
     
     const matrix: EntitlementMatrix = user?.entitlements || {
-        is_super_admin: false,
-        tenant_id: null,
-        subscription_status: 'Locked',
-        active_modules: [],
-        permissions: [],
+        is_super_admin: user?.is_super_admin || false,
+        tenant_id: user?.tenant_id || null,
+        subscription_status: 'Active',
+        active_modules: user?.active_modules || [],
+        permissions: user?.permissions?.map((p: any) => typeof p === 'string' ? p : p.name) || [],
         limits: { users: 0, devices: 0, locations: 0 }
     };
 

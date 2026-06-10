@@ -42,7 +42,24 @@ export default function TenantSettingsHub() {
   const [avatarPreview, setAvatarPreview] = useState<string>('');
 
   useEffect(() => {
-    // Initialization could fetch settings here
+    const fetchSettings = async () => {
+      try {
+        const res = await api.get('/settings');
+        if (res.data) {
+          setBusinessProfile({
+            name: res.data.name || '',
+            phone: res.data.phone || '',
+            address: res.data.address || '',
+            tax_number: res.data.tax_number || '',
+            currency: res.data.currency || 'USD',
+            timezone: res.data.timezone || 'UTC'
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch settings', err);
+      }
+    };
+    fetchSettings();
   }, []);
 
   const handleBrandingFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'dashboard' | 'invoice') => {
@@ -88,16 +105,25 @@ export default function TenantSettingsHub() {
   // Generic Submit Handlers
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSubmitting(true);
-    setTimeout(() => { setSubmitting(false); playTaskSuccess(); alert('Business Profile saved!'); }, 500);
+    try {
+      await api.post('/settings/business', businessProfile);
+      playTaskSuccess(); 
+      alert('Business Profile saved!');
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to save profile');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleBrandingSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSubmitting(true);
     try {
       const formData = new FormData();
+      formData.append('_method', 'PUT');
       if (dashboardLogoFile) formData.append('dashboard_logo', dashboardLogoFile);
       if (invoiceLogoFile) formData.append('invoice_logo', invoiceLogoFile);
-      await api.post('/business/branding', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
+      await api.post('/settings/branding', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
       playTaskSuccess(); alert('Tenant branding updated successfully!');
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to update branding');

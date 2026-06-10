@@ -9,7 +9,7 @@ import { useEntitlements } from '@/hooks/useEntitlements';
 
 export interface SidebarProps {
   items: SidebarMenuItem[];
-  activeModules?: string[] | null; // Kept for backwards compatibility if needed
+  activeModules?: string[] | null;
   isCashier: boolean;
   tenantName?: string;
   tenantLogo?: string | null;
@@ -20,6 +20,7 @@ export interface SidebarProps {
 
 export function Sidebar({
   items,
+  activeModules,
   isCashier,
   tenantName,
   tenantLogo,
@@ -31,7 +32,12 @@ export function Sidebar({
 
   const checkModuleAccess = (slugs?: string[]) => {
     if (!slugs || slugs.length === 0) return true;
-    return slugs.some(slug => hasModule(slug));
+    
+    // PHASE 1: Zero-Trust UI Module Gating
+    // Use the explicit activeModules array resolved from the backend session
+    if (!activeModules || activeModules.length === 0) return false;
+    
+    return slugs.some(slug => activeModules.includes(slug));
   };
 
   const visibleItems = items.filter(item => {

@@ -8,6 +8,9 @@ Route::middleware(['auth:sanctum', 'subscribed'])->group(function () {
     Route::prefix('analytics')->group(function () {
         Route::get('/consolidated-overview', [\App\Modules\Reporting\Controllers\UnifiedAnalyticsController::class, 'getConsolidatedOverview']);
     });
+    
+    // Dashboard Stats
+    Route::get('/dashboard/stats', [\App\Modules\Reporting\Controllers\TenantDashboardController::class, 'stats']);
 
     // Accounting & Reporting
     Route::middleware('role_or_permission:BusinessAdmin')->group(function () {

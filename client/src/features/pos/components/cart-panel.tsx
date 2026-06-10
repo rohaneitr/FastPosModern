@@ -97,7 +97,7 @@ export function CartPanel({
   };
 
   return (
-    <div className="w-[400px] glass-card rounded-xl flex flex-col h-full">
+    <div className="w-[320px] lg:w-[400px] shrink-0 glass-card rounded-xl flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-border flex flex-col gap-2">
         <div className="flex justify-between items-center">

@@ -5,6 +5,7 @@ namespace App\Modules\Tenant\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Modules\Tenant\Services\AuditLogger;
 
 class SuperadminController extends Controller
 {
@@ -47,15 +48,21 @@ class SuperadminController extends Controller
                 'users.email as owner_email',
                 'businesses.is_active',
                 'businesses.subscription_expires_at',
-                'businesses.created_at'
+                'businesses.created_at',
+                'subscriptions.id as subscription_id',
+                'subscriptions.status as subscription_status_real',
+                'plans.max_users as plan_max_users',
+                'plans.max_locations as plan_max_locations',
+                DB::raw('(SELECT count(*) FROM users WHERE users.business_id = businesses.id) as users_count'),
+                DB::raw('(SELECT count(*) FROM locations WHERE locations.business_id = businesses.id) as locations_count')
             );
 
         if ($request->has('search') && $request->search != '') {
-            $search = strtolower($request->search);
+            $search = $request->search;
             $query->where(function($q) use ($search) {
-                $q->where(DB::raw('LOWER(businesses.name)'), 'like', "%{$search}%")
-                  ->orWhere(DB::raw("LOWER(users.first_name || ' ' || users.last_name)"), 'like', "%{$search}%")
-                  ->orWhere(DB::raw('LOWER(users.email)'), 'like', "%{$search}%");
+                $q->where('businesses.name', 'ILIKE', "%{$search}%")
+                  ->orWhereRaw("users.first_name || ' ' || users.last_name ILIKE ?", ["%{$search}%"])
+                  ->orWhere('users.email', 'ILIKE', "%{$search}%");
             });
         }
 
@@ -271,52 +278,62 @@ class SuperadminController extends Controller
             ]
         ]);
 
-        // Find or create user
-        $user = \App\Modules\IAM\Models\User::firstOrCreate(
-            ['email' => $request->owner_email],
-            ['first_name' => 'Tenant', 'last_name' => 'Owner', 'password' => bcrypt($request->password)]
-        );
+        // Wrap everything in an atomic transaction
+        $result = DB::transaction(function () use ($request) {
+            // Find or create user
+            $user = \App\Modules\IAM\Models\User::firstOrCreate(
+                ['email' => $request->owner_email],
+                ['first_name' => 'Tenant', 'last_name' => 'Owner', 'password' => bcrypt($request->password)]
+            );
 
-        $business = \App\Modules\Tenant\Models\Business::create([
-            'name' => $request->name,
-            'owner_id' => $user->id,
-            'subdomain' => $request->subdomain ?? null,
-            'custom_domain' => $request->custom_domain ?? null,
-            'time_zone' => 'Asia/Dhaka',
-            'is_active' => true,
-            'status' => 'pending_activation',
-            'license_key' => null,
-            'active_modules' => [],
-            'trial_ends_at' => now()->addDays(30),
-        ]);
-        
-        $user->update(['business_id' => $business->id]);
-        $user->assignRole('BusinessAdmin');
+            $business = \App\Modules\Tenant\Models\Business::create([
+                'name' => $request->name,
+                'owner_id' => $user->id,
+                'subdomain' => $request->subdomain ?? null,
+                'custom_domain' => $request->custom_domain ?? null,
+                'time_zone' => 'Asia/Dhaka',
+                'is_active' => true,
+                'status' => 'pending_activation',
+                'license_key' => null,
+                'active_modules' => [],
+                'trial_ends_at' => now()->addDays(30),
+            ]);
+            
+            $user->update(['business_id' => $business->id]);
+            $user->assignRole('BusinessAdmin');
 
-        // Provision subscription (and license if hybrid/mobile plan)
-        $plan = \App\Modules\Tenant\Models\Plan::findOrFail($request->plan_id);
-        $provisionAction = new \App\Modules\Tenant\Actions\ProvisionSubscriptionAction();
-        $provisionAction->execute($business->id, $plan);
+            // Provision subscription (and license if hybrid/mobile plan)
+            $plan = \App\Modules\Tenant\Models\Plan::findOrFail($request->plan_id);
+            $provisionAction = new \App\Modules\Tenant\Actions\ProvisionSubscriptionAction();
+            $provisionAction->execute($business->id, $plan);
 
-        // Grab the license key if one was just created
-        $license = DB::table('licenses')
-            ->where('tenant_id', $business->id)
-            ->orderByDesc('id')
-            ->first();
-        $licenseKey = $license?->license_key;
+            // Grab the license key if one was just created
+            $license = DB::table('licenses')
+                ->where('tenant_id', $business->id)
+                ->orderByDesc('id')
+                ->first();
+                
+            return [
+                'business' => $business,
+                'licenseKey' => $license?->license_key
+            ];
+        });
+
+        $business = $result['business'];
+        $licenseKey = $result['licenseKey'];
 
         // Queue welcome email to the new owner
         try {
             $plan = DB::table('plans')->where('id', $request->plan_id)->first();
-            Mail::to($request->owner_email)->queue(new TenantWelcomeMail(
-                businessName:      $request->name,
-                ownerEmail:        $request->owner_email,
-                temporaryPassword: $request->password, // plain-text as entered by SuperAdmin
-                planName:          $plan->name ?? 'Standard',
-                licenseKey:        $licenseKey,
+            \Illuminate\Support\Facades\Mail::to($request->owner_email)->queue(new \App\Modules\Tenant\Mail\TenantWelcomeMail(
+                $request->name,
+                $request->owner_email,
+                $request->password, // plain-text temporary password
+                $plan->name ?? 'Standard',
+                $licenseKey
             ));
         } catch (\Throwable $e) {
-            Log::error('TenantWelcomeMail queue failed', [
+            \Illuminate\Support\Facades\Log::error('Tenant welcome email failed', [
                 'business_id' => $business->id,
                 'error'       => $e->getMessage(),
             ]);
@@ -342,8 +359,11 @@ class SuperadminController extends Controller
         $businessId   = (int) $id;
 
         try {
-            // Use Eloquent soft delete so the booted() event fires and cascades soft deletes
-            $business->delete();
+            DB::transaction(function () use ($business, $businessId, $request, $businessName) {
+                // Use Eloquent soft delete so the booted() event fires and cascades soft deletes
+                $business->delete();
+                AuditLogger::tenantDeleted($request->user(), $businessName, $businessId);
+            });
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('[destroyBusiness] Soft delete failed', [
                 'business_id' => $businessId,
@@ -353,8 +373,6 @@ class SuperadminController extends Controller
                 'message' => 'Failed to delete tenant: ' . $e->getMessage()
             ], 500);
         }
-
-        AuditLogger::tenantDeleted($request->user(), $businessName, $businessId);
 
         return response()->json([
             'message' => 'Tenant and all associated data soft-deleted. It will be permanently removed in 30 days.',
@@ -403,7 +421,7 @@ class SuperadminController extends Controller
         $totalBusinesses = DB::table('businesses')->count();
         $activeBusinesses = DB::table('businesses')->where('is_active', true)->count();
         $totalUsers = DB::table('users')->count();
-        $activeDevices = DB::table('device_activations')->where('status', 'active')->count();
+        $activeDevices = DB::table('user_devices')->where('status', 'active')->count();
 
         $metrics = [
             ['label' => 'Total Tenants', 'value' => $totalBusinesses, 'status' => 'healthy', 'icon' => 'ðŸ¢'],
@@ -506,14 +524,28 @@ class SuperadminController extends Controller
             return response()->json(['message' => 'No admin user found for this tenant'], 404);
         }
         
-        // Generate a temporary token
-        $token = $owner->createToken('impersonation_token')->plainTextToken;
+        // Generate a temporary token with impersonation context injected into abilities
+        $token = $owner->createToken('impersonation_token', ['impersonate', 'admin_id:' . $request->user()->id])->plainTextToken;
+        
+        // Impersonation Audit Logging
+        \App\Modules\SuperAdmin\Models\AuditLog::create([
+            'business_id' => $business_id,
+            'user_id' => $request->user()->id,
+            'event' => 'impersonate_tenant',
+            'auditable_type' => 'App\Modules\Tenant\Models\Business',
+            'auditable_id' => $business_id,
+            'new_values' => ['target_user_id' => $owner->id],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now()
+        ]);
         
         return response()->json([
             'message' => 'Impersonation successful',
             'token' => $token,
             'business_name' => $targetBusiness->name,
-            'user' => $owner
+            'user' => $owner,
+            'original_admin_id' => $request->user()->id
         ]);
     }
 
@@ -541,102 +573,183 @@ class SuperadminController extends Controller
         ]);
     }
 
+    /**
+     * Phase 2: License Monitoring API (List Licenses)
+     */
     public function getLicenses(Request $request)
     {
         if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403); }
-        $licenses = \App\Modules\Tenant\Models\License::with(['tenant', 'plan'])->orderBy('created_at', 'desc')->get();
+        
+        $query = Business::with('subscription.plan')
+            ->select('businesses.*')
+            ->addSelect(DB::raw('(SELECT count(*) FROM user_devices JOIN users ON user_devices.user_id = users.id WHERE users.business_id = businesses.id AND user_devices.status = \'active\') as active_devices_count'))
+            ->whereNotNull('license_key');
+
+        $licenses = $query->paginate(15)->through(function($business) {
+            $resolvedLimit = $business->subscription ? ($business->subscription->resolved_device_limit ?? 0) : 0;
+            return [
+                'id' => $business->id,
+                'business_name' => $business->name,
+                'license_key' => $business->license_key,
+                'status' => $business->is_active ? 'active' : 'suspended',
+                'active_devices_count' => $business->active_devices_count,
+                'resolved_device_limit' => $resolvedLimit === -1 ? 'Unlimited' : $resolvedLimit,
+                'subscription_status' => $business->subscription ? $business->subscription->status : 'None',
+            ];
+        });
+
         return response()->json($licenses);
     }
 
-    public function generateLicense(Request $request)
+    /**
+     * Phase 1: The Device Drill-Down API (Backend)
+     */
+    public function getBusinessDevices(Request $request, $id)
+    {
+        if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403); }
+
+        $devices = DB::table('user_devices')
+            ->join('users', 'user_devices.user_id', '=', 'users.id')
+            ->where('users.business_id', $id)
+            ->select(
+                'user_devices.id as device_id',
+                'user_devices.device_name',
+                'user_devices.os',
+                'user_devices.browser as hardware_fingerprint',
+                'user_devices.ip_address',
+                'user_devices.last_login as last_heartbeat',
+                'user_devices.status',
+                'users.first_name',
+                'users.last_name',
+                'users.email'
+            )
+            ->orderBy('user_devices.last_login', 'desc')
+            ->get();
+
+        return response()->json($devices);
+    }
+
+    /**
+     * Phase 2: Single Device Kill-Switch (Backend)
+     */
+    public function revokeSingleDevice(Request $request, $device_id)
+    {
+        if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403); }
+
+        return DB::transaction(function() use ($request, $device_id) {
+            $device = DB::table('user_devices')->where('id', $device_id)->first();
+            if (!$device) {
+                return response()->json(['message' => 'Device not found'], 404);
+            }
+
+            DB::table('user_devices')->where('id', $device_id)->update(['status' => 'revoked']);
+
+            // Purge ONLY the specific Sanctum token tied to that hardware_fingerprint
+            DB::table('personal_access_tokens')
+                ->where('tokenable_id', $device->user_id)
+                ->where('tokenable_type', \App\Models\User::class)
+                ->where('name', 'POS_Offline_Heartbeat_' . $device->browser)
+                ->delete();
+
+            $user = DB::table('users')->where('id', $device->user_id)->first();
+
+            \App\Modules\Tenant\Services\AuditLogger::log(
+                $user->business_id,
+                $request->user(),
+                'single_device_revoked',
+                'App\Modules\Tenant\Models\Business',
+                $user->business_id,
+                [],
+                ['device_id' => $device_id, 'device_name' => $device->device_name, 'fingerprint' => $device->browser, 'message' => "Single device manually revoked by SuperAdmin"]
+            );
+
+            return response()->json(['message' => 'Device revoked successfully. Token purged.']);
+        });
+    }
+
+    /**
+     * Phase 1: The License Generator & Kill-Switch API
+     */
+    public function generateLicense(Request $request, $id)
     {
         if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403, 'Unauthorized'); }
-        $request->validate([
-            'tenant_id' => 'required|exists:businesses,id',
-            'plan_id' => 'required|exists:plans,id'
-        ]);
+        
+        return DB::transaction(function() use ($request, $id) {
+            $business = Business::findOrFail($id);
 
-        $plan = DB::table('plans')->where('id', $request->plan_id)->first();
+            // Generate FPM-XXXX-XXXX-XXXX-XXXX
+            $key = 'FPM-' . strtoupper(substr(md5(uniqid()), 0, 4)) . '-' . 
+                   strtoupper(substr(md5(uniqid()), 0, 4)) . '-' . 
+                   strtoupper(substr(md5(uniqid()), 0, 4)) . '-' . 
+                   strtoupper(substr(md5(uniqid()), 0, 4));
 
-        $licenseKey = $this->generateCleanKey();
+            $oldKey = $business->license_key;
+            $business->update(['license_key' => $key]);
 
-        // Deactivate existing licenses for this tenant
-        \App\Modules\Tenant\Models\License::where('tenant_id', $request->tenant_id)->update(['status' => 'suspended']);
+            // The Kill-Switch
+            // 1. Revoke all active offline devices
+            DB::table('user_devices')
+                ->join('users', 'user_devices.user_id', '=', 'users.id')
+                ->where('users.business_id', $business->id)
+                ->where('user_devices.status', 'active')
+                ->update(['user_devices.status' => 'revoked']);
 
-        $license = \App\Modules\Tenant\Models\License::create([
-            'tenant_id' => $request->tenant_id,
-            'plan_id' => $request->plan_id,
-            'license_key' => $licenseKey,
-            'status' => 'active',
-            'device_limit' => $plan->device_limit ?? 1,
-            'employee_limit' => $plan->employee_limit ?? 1,
-            'expires_at' => $plan->interval === 'year' ? now()->addYear() : now()->addMonth(),
-        ]);
+            // 2. Delete all Heartbeat Tokens for all users of this business to force immediate logout
+            $userIds = DB::table('users')->where('business_id', $business->id)->pluck('id');
+            DB::table('personal_access_tokens')
+                ->whereIn('tokenable_id', $userIds)
+                ->where('tokenable_type', \App\Models\User::class)
+                ->where('name', 'like', 'POS_Offline_Heartbeat_%')
+                ->delete();
 
-        return response()->json([
-            'message' => 'License key generated successfully',
-            'license_key' => $licenseKey,
-            'license' => $license->load(['tenant', 'plan'])
-        ], 201);
+            \App\Modules\Tenant\Services\AuditLogger::log(
+                $business->id,
+                $request->user(),
+                'license_regenerated',
+                'App\Modules\Tenant\Models\Business',
+                $business->id,
+                ['license_key' => $oldKey],
+                ['license_key' => $key, 'message' => "Master License regenerated. System-wide Kill-Switch engaged."]
+            );
+
+            return response()->json([
+                'message' => 'License generated successfully. Previous devices revoked.',
+                'license_key' => $key
+            ]);
+        });
     }
 
     public function toggleLicenseStatus(Request $request, $id)
     {
         if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403); }
-        $license = \App\Modules\Tenant\Models\License::findOrFail($id);
-        $license->status = $license->status === 'active' ? 'suspended' : 'active';
-        $license->save();
+        
+        $business = Business::findOrFail($id);
+        $business->is_active = !$business->is_active;
+        $business->save();
 
-        if ($license->status === 'suspended') {
-            AuditLogger::licenseRevoked($request->user(), $license);
+        // If suspended, Heartbeat API will fail naturally. 
+        // We purge the current offline heartbeat tokens to force an immediate internet check next time they try to use it.
+        // But we DO NOT set user_devices.status = 'revoked', so they can automatically reconnect if reactivated.
+        if (!$business->is_active) {
+            $userIds = DB::table('users')->where('business_id', $business->id)->pluck('id');
+            DB::table('personal_access_tokens')
+                ->whereIn('tokenable_id', $userIds)
+                ->where('tokenable_type', \App\Models\User::class)
+                ->where('name', 'like', 'POS_Offline_Heartbeat_%')
+                ->delete();
         }
 
-        return response()->json(['message' => 'License status updated', 'license' => $license->load(['tenant', 'plan'])]);
-    }
+        \App\Modules\Tenant\Services\AuditLogger::log(
+            $business->id,
+            $request->user(),
+            'license_status_toggled',
+            'App\Modules\Tenant\Models\Business',
+            $business->id,
+            ['is_active' => !$business->is_active],
+            ['is_active' => $business->is_active, 'message' => "Master License manually " . ($business->is_active ? 'Activated' : 'Suspended') . " by SuperAdmin"]
+        );
 
-    public function activateDevice(Request $request)
-    {
-        $request->validate([
-            'license_key' => 'required|string',
-            'device_fingerprint' => 'required|string'
-        ]);
-
-        return DB::transaction(function () use ($request) {
-            $activation = \App\Modules\Tenant\Models\DeviceActivation::where('license_key', $request->license_key)
-                ->where('status', 'active')
-                ->first();
-
-            if (!$activation) {
-                // Check if it's a new activation for a business
-                $activation = \App\Modules\Tenant\Models\DeviceActivation::where('license_key', $request->license_key)->first();
-                if (!$activation) return response()->json(['message' => 'Invalid license key'], 404);
-            }
-
-            // Check limits
-            $business = \App\Modules\Tenant\Models\Business::find($activation->business_id);
-            $subscription = DB::table('subscriptions')->where('business_id', $business->id)->where('status', 'active')->first();
-            if (!$subscription) return response()->json(['message' => 'No active subscription'], 403);
-            
-            $plan = DB::table('plans')->where('id', $subscription->plan_id)->first();
-            
-            // Apply pessimistic lock here to prevent race conditions during activation
-            $activeCount = \App\Modules\Tenant\Models\DeviceActivation::where('business_id', $business->id)
-                ->where('status', 'active')
-                ->lockForUpdate()
-                ->count();
-
-            if ($activeCount >= ($plan->device_limit ?? 1) && $activation->device_fingerprint !== $request->device_fingerprint) {
-                return response()->json(['message' => 'Device Quota Exceeded'], 403);
-            }
-
-            $activation->update([
-                'device_fingerprint' => $request->device_fingerprint,
-                'activated_at' => now(),
-                'status' => 'active'
-            ]);
-
-            return response()->json(['message' => 'Device activated successfully']);
-        });
+        return response()->json(['message' => 'Master License status updated', 'business' => $business]);
     }
 
 }

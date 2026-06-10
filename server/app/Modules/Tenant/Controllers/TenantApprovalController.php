@@ -140,15 +140,15 @@ class TenantApprovalController extends Controller
         $recipientEmail = $tenantRequest->applicant_email;
         if ($recipientEmail) {
             try {
-                Mail::to($recipientEmail)->queue(new TenantApprovedMail(
-                    businessName:      $tenantRequest->business_name,
-                    ownerEmail:        $recipientEmail,
-                    temporaryPassword: $temporaryPassword,
-                    planName:          $plan->name,
-                    licenseKey:        $licenseKey,
+                Mail::to($recipientEmail)->queue(new \App\Modules\Tenant\Mail\TenantWelcomeMail(
+                    $tenantRequest->business_name,
+                    $recipientEmail,
+                    $temporaryPassword,
+                    $plan->name,
+                    $licenseKey
                 ));
             } catch (\Throwable $e) {
-                Log::error('TenantApprovedMail queue failed', [
+                Log::error('TenantWelcomeMail queue failed', [
                     'tenant_request_id' => $tenantRequest->id,
                     'error'             => $e->getMessage(),
                 ]);
@@ -201,9 +201,9 @@ class TenantApprovalController extends Controller
         $recipientEmail = $tenantRequest->applicant_email;
         if ($recipientEmail) {
             try {
-                Mail::to($recipientEmail)->queue(new TenantRejectedMail(
-                    businessName:    $tenantRequest->business_name,
-                    rejectionReason: $request->rejection_reason,
+                Mail::to($recipientEmail)->queue(new \App\Modules\Tenant\Mail\TenantRejectedMail(
+                    $tenantRequest->business_name,
+                    $request->rejection_reason
                 ));
             } catch (\Throwable $e) {
                 Log::error('TenantRejectedMail queue failed', [

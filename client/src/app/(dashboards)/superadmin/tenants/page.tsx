@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import BulkMessageModal from '@/components/BulkMessageModal';
+import toast from 'react-hot-toast';
 
 export default function SuperadminPage() {
   const [businesses, setBusinesses] = useState<any[]>([]);
@@ -46,12 +47,9 @@ export default function SuperadminPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   
-  // Toast Notification State
-  const [toast, setToast] = useState<{message: string, type: 'success'|'error'} | null>(null);
-
   const showToast = (message: string, type: 'success'|'error') => {
-    setToast({message, type});
-    setTimeout(() => setToast(null), 4000);
+    if (type === 'success') toast.success(message);
+    else toast.error(message);
   };
 
   useEffect(() => {
@@ -97,11 +95,18 @@ export default function SuperadminPage() {
   };
 
   const handleToggle = async (id: number) => {
+    const backup = [...businesses];
+    // Optimistic toggle
+    const tenant = businesses.find(b => b.id === id);
+    const newStatus = tenant ? !tenant.is_active : false;
+    setBusinesses(prev => prev.map(b => b.id === id ? { ...b, is_active: newStatus } : b));
+    
     try {
       const res = await api.post(`/superadmin/businesses/${id}/toggle`);
       setBusinesses(prev => prev.map(b => b.id === id ? { ...b, is_active: res.data.is_active } : b));
       showToast(`Tenant status updated to ${res.data.is_active ? 'Active' : 'Suspended'}`, 'success');
     } catch (err) {
+      setBusinesses(backup); // Rollback
       showToast('Failed to toggle tenant status. Check permissions.', 'error');
       console.error(err);
     }
@@ -130,19 +135,21 @@ export default function SuperadminPage() {
 
   const handleOpenBilling = (b: any) => {
     setSelectedTenantId(b.id);
-    setBillingForm({ duration: '1_month', status: b.subscription_status || 'Active' });
+    setBillingForm({ duration: '1_month', status: b.subscription_status_real || 'active' });
     setShowBillingModal(true);
   };
 
   const handleRenewSubscription = async () => {
     setSubmitting(true);
     try {
-      await api.post(`/superadmin/businesses/${selectedTenantId}/subscription/renew`, { duration: billingForm.duration });
+      const tenant = businesses.find(b => b.id === selectedTenantId);
+      if (!tenant || !tenant.subscription_id) throw new Error("No subscription attached to this tenant.");
+      await api.post(`/superadmin/subscriptions/${tenant.subscription_id}/renew`, { extension_period: billingForm.duration });
       showToast('Subscription renewed successfully', 'success');
       setShowBillingModal(false);
       fetchBusinesses();
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to renew subscription', 'error');
+      showToast(err.response?.data?.message || err.message || 'Failed to renew subscription', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -151,12 +158,14 @@ export default function SuperadminPage() {
   const handleOverrideStatus = async () => {
     setSubmitting(true);
     try {
-      await api.post(`/superadmin/businesses/${selectedTenantId}/subscription/override`, { subscription_status: billingForm.status });
+      const tenant = businesses.find(b => b.id === selectedTenantId);
+      if (!tenant || !tenant.subscription_id) throw new Error("No subscription attached to this tenant.");
+      await api.patch(`/superadmin/subscriptions/${tenant.subscription_id}/status`, { status: billingForm.status.toLowerCase() });
       showToast('Subscription status overridden', 'success');
       setShowBillingModal(false);
       fetchBusinesses();
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to override status', 'error');
+      showToast(err.response?.data?.message || err.message || 'Failed to override status', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -267,19 +276,7 @@ export default function SuperadminPage() {
 
   return (
     <div className="flex flex-col h-full gap-8 animate-in fade-in duration-700 pb-12 relative">
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full shadow-2xl font-semibold flex items-center gap-3 animate-in slide-in-from-top-10
-          ${toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 backdrop-blur-md' : 'bg-danger/20 text-danger-300 border border-danger/50 backdrop-blur-md'}`}
-        >
-          {toast.type === 'success' ? (
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-          ) : (
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          )}
-          {toast.message}
-        </div>
-      )}
+
 
       {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -348,6 +345,7 @@ export default function SuperadminPage() {
                 <th className="px-6 py-4">Owner Contact</th>
                 <th className="px-6 py-4">Registered Date</th>
                 <th className="px-6 py-4">Subscription</th>
+                <th className="px-6 py-4">Quotas</th>
                 <th className="px-6 py-4 text-center">Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
@@ -360,6 +358,7 @@ export default function SuperadminPage() {
                     <td className="px-6 py-5"><div className="h-4 bg-surface rounded-md w-full mb-2"></div><div className="h-3 bg-surface rounded-md w-2/3"></div></td>
                     <td className="px-6 py-5"><div className="h-4 bg-surface rounded-md w-24"></div></td>
                     <td className="px-6 py-5"><div className="h-4 bg-surface rounded-md w-20"></div></td>
+                    <td className="px-6 py-5"><div className="h-4 bg-surface rounded-md w-full"></div></td>
                     <td className="px-6 py-5 text-center"><div className="h-6 bg-surface rounded-full w-20 mx-auto"></div></td>
                     <td className="px-6 py-5 text-right"><div className="h-8 bg-surface rounded-lg w-24 ml-auto"></div></td>
                   </tr>
@@ -427,6 +426,28 @@ export default function SuperadminPage() {
                             {new Date(b.subscription_expires_at).toLocaleDateString()}
                           </span>
                         )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-2 w-32">
+                          <div>
+                            <div className="flex justify-between text-[10px] text-text-muted mb-1">
+                              <span>Users</span>
+                              <span>{b.users_count || 0} / {b.plan_max_users || 'âˆž'}</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
+                              <div className="h-full bg-fuchsia-500 rounded-full" style={{ width: `${Math.min(100, ((b.users_count || 0) / (b.plan_max_users || 1)) * 100)}%` }}></div>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-[10px] text-text-muted mb-1">
+                              <span>Locations</span>
+                              <span>{b.locations_count || 0} / {b.plan_max_locations || 'âˆž'}</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
+                              <div className="h-full bg-sky-500 rounded-full" style={{ width: `${Math.min(100, ((b.locations_count || 0) / (b.plan_max_locations || 1)) * 100)}%` }}></div>
+                            </div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1.5 items-center w-28 mx-auto">
@@ -633,9 +654,10 @@ export default function SuperadminPage() {
                     onChange={(e) => setBillingForm({...billingForm, status: e.target.value})}
                     className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-white outline-none focus:border-orange-500/50"
                   >
-                    <option value="Active">Active</option>
-                    <option value="Expired">Expired</option>
-                    <option value="Suspended">Suspended</option>
+                    <option value="active">Active</option>
+                    <option value="past_due">Past Due</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="canceled">Canceled</option>
                   </select>
                   <button 
                     onClick={handleOverrideStatus} disabled={submitting}

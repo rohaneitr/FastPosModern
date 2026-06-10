@@ -44,6 +44,10 @@ class ConsumeBatchFIFOInventoryAction
 
         // Fetch base products info for fallbacks (Negative Stock Outbreak Protection)
         $products = DB::table('products')->whereIn('id', $productIds)->get()->keyBy('id');
+        
+        // Fetch Pharmacy metadata to enforce strict expiry checks
+        $medicineProductIds = DB::table('medicines_meta')->whereIn('product_id', $productIds)->pluck('product_id')->toArray();
+        $medicineMap = array_fill_keys($medicineProductIds, true);
 
         $updates = [];
         $inserts = [];
@@ -61,6 +65,13 @@ class ConsumeBatchFIFOInventoryAction
 
             foreach ($productLayers as $layer) {
                 if ($bdQtyToConsume->isZero()) break;
+
+                // PHASE 1: FEFO Expiry Prevention for Pharmacy Vertical
+                if (isset($medicineMap[$productId]) && !empty($layer->expiry_date)) {
+                    if (\Carbon\Carbon::parse($layer->expiry_date)->isPast()) {
+                        abort(422, "Cannot sell product ID {$productId}: The allocated batch has expired.");
+                    }
+                }
 
                 $layerQty = BigDecimal::of($layer->remaining_qty);
                 $layerCost = BigDecimal::of($layer->unit_cost);

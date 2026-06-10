@@ -18,5 +18,6 @@ Route::middleware(['auth:sanctum', 'subscribed', 'module.access:core_pos'])->gro
         Route::post('/checkout/hold', [\App\Modules\Sales\Controllers\TransactionController::class, 'holdTransaction']);
         Route::get('/checkout/held', [\App\Modules\Sales\Controllers\TransactionController::class, 'heldTransactions']);
         Route::delete('/checkout/held/{id}', [\App\Modules\Sales\Controllers\TransactionController::class, 'deleteHeld']);
+        Route::post('/sync/offline-transactions', [\App\Modules\Sales\Controllers\TransactionController::class, 'syncOfflineTransactions']);
     });
 });

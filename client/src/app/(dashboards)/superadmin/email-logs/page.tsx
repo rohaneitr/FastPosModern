@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,9 +86,7 @@ export default function EmailLogsPage() {
   const [lastPage,  setLastPage]  = useState(1);
   const [total,     setTotal]     = useState(0);
   const [expanded,  setExpanded]  = useState<number | null>(null);
-  const [toast,     setToast]     = useState<string | null>(null);
-
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3500); };
+  const showToast = (msg: string) => { toast.error(msg); };
 
   // ── Fetch stats ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -103,7 +102,7 @@ export default function EmailLogsPage() {
 
   // ── Fetch logs ────────────────────────────────────────────────────────────
   const fetchLogs = useCallback(async () => {
-    setLoading(true);
+    if (logs.length === 0) setLoading(true);
     try {
       const { default: api } = await import('@/lib/api');
       const params = new URLSearchParams({ page: String(page) });
@@ -123,12 +122,7 @@ export default function EmailLogsPage() {
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
   return (
-    <>
-      {toast && (
-        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-xl text-sm font-semibold bg-rose-500/15 border border-rose-500/30 text-rose-300 shadow-2xl animate-in slide-in-from-top-4 duration-300">
-          ❌ {toast}
-        </div>
-      )}
+
 
       <div className="flex flex-col gap-8 animate-in fade-in duration-500 pb-12">
 
@@ -214,29 +208,51 @@ export default function EmailLogsPage() {
   </thead>
   <tbody className="divide-y divide-border">
     {loading && logs.length === 0 ? (
+      [...Array(5)].map((_, i) => (
+        <tr key={`skel-${i}`} className="animate-pulse bg-surface/10 border-b border-border/50">
+          <td className="px-6 py-5"><div className="h-4 bg-surface rounded w-32"></div></td>
+          <td className="px-6 py-5"><div className="h-4 bg-surface rounded w-48"></div></td>
+          <td className="px-6 py-5"><div className="h-4 bg-surface rounded w-20"></div></td>
+          <td className="px-6 py-5"><div className="h-4 bg-surface rounded w-3/4"></div></td>
+          <td className="px-6 py-5"><div className="h-4 bg-surface rounded w-32"></div></td>
+          <td className="px-6 py-5 text-right"><div className="h-4 bg-surface rounded w-16 ml-auto"></div></td>
+        </tr>
+      ))
+    ) : logs.length > 0 ? (
+      logs.map((item: any, index: number) => (
+      <React.Fragment key={item.id || index}>
+        <tr className="hover:bg-surface/30 transition-colors group">
+          <td className="px-6 py-4 text-white font-medium">{item.to_email}</td>
+          <td className="px-6 py-4 text-white font-medium">{item.subject}</td>
+          <td className="px-6 py-4 text-white font-medium">{item.status}</td>
+          <td className="px-6 py-4 text-white font-medium">{item.error_message}</td>
+          <td className="px-6 py-4 text-white font-medium">{item.mailable_class}</td>
+          <td className="px-6 py-4 text-right">
+            <button onClick={() => setExpanded(expanded === item.id ? null : item.id)} className="text-sky-500 hover:text-sky-400 font-medium text-sm transition-colors">
+              {expanded === item.id ? 'Hide' : 'View'}
+            </button>
+          </td>
+        </tr>
+        {expanded === item.id && (
+          <tr>
+            <td colSpan={6} className="px-6 py-4 bg-surface/50 border-t border-border">
+              <pre className="text-xs text-text-muted overflow-x-auto">
+                {JSON.stringify(item, null, 2)}
+              </pre>
+            </td>
+          </tr>
+        )}
+      </React.Fragment>
+      ))
+    ) : (
       <tr>
-        <td colSpan={10} className="px-6 py-8 text-center text-text-muted">
-          <div className="flex items-center justify-center gap-2">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin text-sky-500">
-              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-            </svg>
-            Loading...
+        <td colSpan={6} className="px-6 py-16 text-center">
+          <div className="flex flex-col items-center justify-center text-text-muted">
+            <svg className="w-16 h-16 mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76" /></svg>
+            <p className="text-lg font-medium text-white mb-1">No Email Logs Found</p>
+            <p className="text-sm">We couldn't find any email transmission records.</p>
           </div>
         </td>
-      </tr>
-    ) : logs.length > 0 ? (
-      logs.map((item, index) => (
-      <tr key={item.id || index} className="hover:bg-surface/30 transition-colors group">
-        <td className="px-6 py-4 text-white font-medium">{item.to_email}</td>
-                <td className="px-6 py-4 text-white font-medium">{item.subject}</td>
-                <td className="px-6 py-4 text-white font-medium">{item.status}</td>
-                <td className="px-6 py-4 text-white font-medium">{item.error_message}</td>
-                <td className="px-6 py-4 text-white font-medium">{item.mailable_class}</td>
-                <td className="px-6 py-4 text-right"><button className="text-rose-500 hover:text-rose-400 font-medium text-sm">View</button></td>
-      </tr>
-    ))) : (
-      <tr>
-        <td colSpan={10} className="px-6 py-8 text-center text-text-muted">No records found.</td>
       </tr>
     )}
   </tbody>
@@ -262,6 +278,5 @@ export default function EmailLogsPage() {
           </div>
         )}
       </div>
-    </>
   );
 }

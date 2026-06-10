@@ -6,9 +6,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', \App\Http\Controllers\HealthController::class);
+    
+    // License Activation (Public endpoint, uses license_key)
+    Route::post('/licenses/activate-device', [\App\Modules\Tenant\Controllers\LicenseActivationController::class, 'activateDevice']);
 
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/devices/heartbeat', [\App\Modules\Tenant\Controllers\LicenseActivationController::class, 'heartbeat']);
 
             // General Authenticated Routes
             // Route::get('/notifications', [\App\Modules\Tenant\Controllers\NotificationController::class, 'index']);
@@ -32,8 +36,8 @@ Route::prefix('v1')->group(function () {
         // ---- BUSINESS ADMIN ONLY ----
         Route::middleware(['subscribed'])->group(function () {
             Route::middleware('role:BusinessAdmin')->group(function () {
-
-        });
+                Route::post('/tenant/subscription/change-plan', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'changePlan']);
+            });
         // ---- BUSINESS STAFF ----
         
 

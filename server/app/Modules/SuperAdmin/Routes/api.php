@@ -4,7 +4,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'role:SuperAdmin'])->group(function () {
     Route::prefix('superadmin')->group(function () {
-        Route::post('/licenses/generate', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'generateLicense']);
+        Route::post('/businesses/{id}/regenerate-license', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'generateLicense']);
+        Route::get('/businesses/{id}/devices', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'getBusinessDevices']);
+        Route::patch('/devices/{device_id}/revoke', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'revokeSingleDevice']);
+        
         Route::get('/licenses', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'getLicenses']);
         Route::put('/licenses/{id}/toggle-status', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'toggleLicenseStatus']);
         
@@ -23,6 +26,7 @@ Route::middleware(['auth:sanctum', 'role:SuperAdmin'])->group(function () {
 
         Route::get('/settings', [\App\Modules\SuperAdmin\Controllers\GlobalSettingsController::class, 'index']);
         Route::post('/settings', [\App\Modules\SuperAdmin\Controllers\GlobalSettingsController::class, 'update']);
+        Route::post('/settings/test-smtp', [\App\Modules\SuperAdmin\Controllers\GlobalSettingsController::class, 'testSmtp']);
 
         Route::get('/audit-logs', [\App\Modules\SuperAdmin\Controllers\AuditLogController::class, 'index']);
         Route::get('/email-logs', [\App\Modules\SuperAdmin\Controllers\EmailLogController::class, 'index']);
@@ -50,6 +54,14 @@ Route::middleware(['auth:sanctum', 'role:SuperAdmin'])->group(function () {
 
         Route::get('/plans', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'getPlans']);
         Route::post('/plans', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'storePlan']);
+        Route::put('/plans/{id}', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'updatePlan']);
+        Route::delete('/plans/{id}', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'destroyPlan']);
+        
+        Route::post('/subscriptions/{id}/renew', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'renew']);
+        Route::patch('/subscriptions/{id}/status', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'overrideStatus']);
+        Route::patch('/subscriptions/{id}/capabilities', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'updateCapabilities']);
+        
+        Route::get('/system-modules', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'getSystemModules']);
     });
     Route::get('/currencies', [\App\Modules\Tenant\Controllers\SettingsController::class, 'currencies']);
     Route::get('/exchange-rates', [\App\Modules\Tenant\Controllers\SettingsController::class, 'exchangeRates']);

@@ -9,6 +9,7 @@ use App\Modules\Tenant\Models\Subscription;
 use App\Modules\Tenant\Models\Business;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class SubscriptionController extends Controller
 {
@@ -17,8 +18,26 @@ class SubscriptionController extends Controller
      */
     public function getPlans()
     {
-        $plans = Plan::all();
+        $plans = Plan::all()->map(function ($plan) {
+            // Map legacy columns if needed
+            if (!isset($plan->employee_limit) && isset($plan->max_users)) {
+                $plan->employee_limit = $plan->max_users;
+            }
+            if (!isset($plan->device_limit)) {
+                $plan->device_limit = 1; // Default
+            }
+            return $plan;
+        });
         return response()->json($plans);
+    }
+
+    /**
+     * SuperAdmin: Get all system modules
+     */
+    public function getSystemModules()
+    {
+        $modules = DB::table('modules')->get();
+        return response()->json($modules);
     }
 
     /**
@@ -30,13 +49,301 @@ class SubscriptionController extends Controller
             'name' => 'required|string|max:100',
             'price' => 'required|numeric|min:0',
             'interval' => 'required|in:month,year',
-            'max_users' => 'required|integer|min:1',
-            'max_locations' => 'required|integer|min:1',
-            'stripe_price_id' => 'nullable|string'
+            'max_users' => 'nullable|integer|min:1',
+            'user_limit' => 'nullable|integer|min:1',
+            'max_locations' => 'nullable|integer|min:1',
+            'location_limit' => 'nullable|integer|min:1',
+            'device_limit' => 'nullable|integer|min:1',
+            'stripe_price_id' => 'nullable|string',
+            'plan_type' => 'nullable|string',
+            'enabled_modules' => 'nullable|array'
         ]);
 
-        $plan = Plan::create($validated);
+        $data = [
+            'name' => $validated['name'],
+            'price' => $validated['price'],
+            'interval' => $validated['interval'],
+            'user_limit' => $validated['user_limit'] ?? $validated['max_users'] ?? 1,
+            'location_limit' => $validated['location_limit'] ?? $validated['max_locations'] ?? 1,
+            'device_limit' => $validated['device_limit'] ?? 1,
+            'stripe_price_id' => $validated['stripe_price_id'] ?? null,
+            'plan_type' => $validated['plan_type'] ?? null,
+        ];
+
+        if (isset($validated['enabled_modules'])) {
+            $data['enabled_modules'] = json_encode($validated['enabled_modules']);
+        }
+
+        $plan = Plan::create($data);
         return response()->json(['message' => 'Plan created', 'plan' => $plan], 201);
+    }
+
+    /**
+     * SuperAdmin: Update an existing plan
+     */
+    public function updatePlan(Request $request, $id)
+    {
+        $plan = Plan::findOrFail($id);
+        
+        $validated = $request->validate([
+            'name' => 'required|string|max:100',
+            'price' => 'required|numeric|min:0',
+            'interval' => 'required|in:month,year',
+            'max_users' => 'nullable|integer|min:1',
+            'user_limit' => 'nullable|integer|min:1',
+            'max_locations' => 'nullable|integer|min:1',
+            'location_limit' => 'nullable|integer|min:1',
+            'device_limit' => 'nullable|integer|min:1',
+            'stripe_price_id' => 'nullable|string',
+            'plan_type' => 'nullable|string',
+            'enabled_modules' => 'nullable|array'
+        ]);
+
+        $data = [
+            'name' => $validated['name'],
+            'price' => $validated['price'],
+            'interval' => $validated['interval'],
+            'user_limit' => $validated['user_limit'] ?? $validated['max_users'] ?? 1,
+            'location_limit' => $validated['location_limit'] ?? $validated['max_locations'] ?? 1,
+            'device_limit' => $validated['device_limit'] ?? 1,
+            'stripe_price_id' => $validated['stripe_price_id'] ?? null,
+            'plan_type' => $validated['plan_type'] ?? null,
+        ];
+
+        if (isset($validated['enabled_modules'])) {
+            $data['enabled_modules'] = json_encode($validated['enabled_modules']);
+        }
+
+        $plan->update($data);
+        return response()->json(['message' => 'Plan updated successfully', 'plan' => $plan]);
+    }
+
+    /**
+     * SuperAdmin: Delete a plan
+     */
+    public function destroyPlan($id)
+    {
+        $plan = Plan::findOrFail($id);
+
+        $hasActiveSubscriptions = Subscription::where('plan_id', $id)->where('status', 'active')->exists();
+        if ($hasActiveSubscriptions) {
+            return response()->json(['message' => 'Cannot delete plan with active subscriptions. Soft-delete instead or migrate tenants.'], 400);
+        }
+
+        $plan->delete(); // Assuming SoftDeletes is on Plan model, else it hard deletes
+        return response()->json(['message' => 'Plan deleted successfully']);
+    }
+
+    /**
+     * SuperAdmin: Renew or extend a subscription
+     */
+    public function renew(Request $request, $id)
+    {
+        $request->validate([
+            'extension_period' => 'required|in:1_month,1_year'
+        ]);
+
+        return DB::transaction(function() use ($request, $id) {
+            $subscription = Subscription::with('business')->findOrFail($id);
+            
+            $oldEnd = $subscription->current_period_end ? Carbon::parse($subscription->current_period_end) : now();
+            $currentEnd = $oldEnd->copy();
+            
+            // If expired, start from today
+            if ($currentEnd->isPast()) {
+                $currentEnd = now();
+            }
+
+            if ($request->extension_period === '1_month') {
+                $newEnd = $currentEnd->addMonth();
+            } else {
+                $newEnd = $currentEnd->addYear();
+            }
+
+            $subscription->update([
+                'current_period_end' => $newEnd,
+                'status' => 'active'
+            ]);
+
+            // Reactivate business if it was suspended due to expiration
+            if ($subscription->business) {
+                $subscription->business->update([
+                    'is_active' => true,
+                    'subscription_ends_at' => $newEnd->format('Y-m-d'),
+                    'subscription_status' => 'Active'
+                ]);
+            }
+
+            \App\Modules\Tenant\Services\AuditLogger::subscriptionRenewed(
+                $request->user(), 
+                $subscription, 
+                $oldEnd->toDateTimeString(), 
+                $newEnd->toDateTimeString(), 
+                $request->extension_period
+            );
+
+            return response()->json([
+                'message' => 'Subscription renewed successfully',
+                'subscription' => $subscription
+            ]);
+        });
+    }
+
+    /**
+     * SuperAdmin: Override subscription status manually
+     */
+    public function overrideStatus(Request $request, $id)
+    {
+        $request->validate([
+            'status' => 'required|in:active,suspended,canceled,past_due'
+        ]);
+
+        return DB::transaction(function() use ($request, $id) {
+            $subscription = Subscription::with('business')->findOrFail($id);
+            
+            $oldStatus = $subscription->status;
+            $newStatus = $request->status;
+            
+            $subscription->update(['status' => $newStatus]);
+            
+            // Ensure downstream business state is accurately reflected to restrict login
+            if ($subscription->business) {
+                if (in_array($newStatus, ['suspended', 'canceled', 'past_due'])) {
+                    $subscription->business->update([
+                        'is_active' => false,
+                        'subscription_status' => ucfirst($newStatus)
+                    ]);
+                } else if ($newStatus === 'active') {
+                    $subscription->business->update([
+                        'is_active' => true,
+                        'subscription_status' => 'Active'
+                    ]);
+                }
+            }
+
+            \App\Modules\Tenant\Services\AuditLogger::subscriptionStatusOverridden(
+                $request->user(),
+                $subscription,
+                $oldStatus,
+                $newStatus
+            );
+
+            return response()->json([
+                'message' => 'Subscription status overridden successfully',
+                'subscription' => $subscription
+            ]);
+        });
+    }
+
+    /**
+     * SuperAdmin: Override capabilities per tenant
+     */
+    public function updateCapabilities(Request $request, $id)
+    {
+        $request->validate([
+            'limit_overrides' => 'nullable|array',
+            'module_overrides' => 'nullable|array',
+            'module_overrides.added' => 'nullable|array',
+            'module_overrides.removed' => 'nullable|array'
+        ]);
+
+        return DB::transaction(function() use ($request, $id) {
+            $subscription = Subscription::findOrFail($id);
+            
+            $limitOverrides = $request->limit_overrides ?? [];
+            $moduleOverrides = $request->module_overrides ?? [];
+            
+            $subscription->update([
+                'limit_overrides' => $limitOverrides,
+                'module_overrides' => $moduleOverrides
+            ]);
+
+            \App\Modules\Tenant\Services\AuditLogger::subscriptionCapabilitiesModified(
+                $request->user(),
+                $subscription,
+                $limitOverrides,
+                $moduleOverrides
+            );
+
+            return response()->json([
+                'message' => 'Capability overrides updated successfully',
+                'subscription' => $subscription
+            ]);
+        });
+    }
+
+    /**
+     * Tenant: Change Plan (Self-Service)
+     */
+    public function changePlan(Request $request, \App\Modules\Tenant\Actions\ValidatePlanTransitionAction $validator)
+    {
+        $request->validate(['target_plan_id' => 'required|exists:plans,id']);
+        
+        $businessId = $request->user()->business_id;
+        
+        return DB::transaction(function() use ($request, $validator, $businessId) {
+            $subscription = Subscription::where('business_id', $businessId)->firstOrFail();
+            $targetPlan = Plan::findOrFail($request->target_plan_id);
+            
+            // Phase 1: Pre-flight Validation
+            $validator->execute($businessId, $targetPlan->id, $subscription);
+            
+            // Phase 2: Override Lifecycle Policy
+            $moduleOverrides = $subscription->module_overrides ?? [];
+            
+            // Check native modules of new plan
+            $targetBaseModules = $targetPlan->enabled_modules ?? [];
+            if (is_string($targetBaseModules)) {
+                $targetBaseModules = json_decode($targetBaseModules, true) ?? [];
+            }
+            
+            // Clean module overrides if redundant
+            if (isset($moduleOverrides['added'])) {
+                $moduleOverrides['added'] = array_values(array_diff($moduleOverrides['added'], $targetBaseModules));
+            }
+            if (isset($moduleOverrides['removed'])) {
+                $moduleOverrides['removed'] = array_values(array_intersect($moduleOverrides['removed'], $targetBaseModules));
+            }
+            
+            $oldPlanId = $subscription->plan_id;
+            $oldPlan = Plan::find($oldPlanId);
+            
+            // Phase 3: Financial Synchronization Hooks (Billing)
+            // Determine if this is an upgrade, downgrade, or lateral move
+            $isUpgrade = $oldPlan && $targetPlan->price > $oldPlan->price;
+            $status = 'active';
+
+            // IMPORTANT: Insert Payment Gateway Logic Here.
+            // If the system requires upfront payment for an upgrade, we set the status to 'pending_payment'.
+            // Event::dispatch(new PlanChangedEvent($subscription, $targetPlan, $isUpgrade));
+            if ($isUpgrade) {
+                // $status = 'pending_payment';
+                // Trigger Stripe/Local Wallet invoice generation
+            }
+            
+            // Update the subscription
+            // Quantitative Overrides (limit_overrides) MUST be preserved implicitly
+            $subscription->update([
+                'plan_id' => $targetPlan->id,
+                'module_overrides' => $moduleOverrides,
+                'status' => $status
+                // 'current_period_end' => ... Calculate prorated expiration if necessary
+            ]);
+            
+            // Log the action
+            \App\Modules\Tenant\Services\AuditLogger::tenantPlanChanged(
+                $request->user(),
+                $subscription,
+                $oldPlanId,
+                $targetPlan->id,
+                $targetPlan->name
+            );
+            
+            return response()->json([
+                'message' => 'Plan changed successfully',
+                'subscription' => $subscription->fresh()
+            ]);
+        });
     }
 
     /**

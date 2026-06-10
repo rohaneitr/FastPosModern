@@ -3,12 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { usePosSounds } from '@/hooks/usePosSounds';
+import toast from 'react-hot-toast';
 
 export default function SuperAdminSettingsPage() {
   const { playTaskSuccess } = usePosSounds();
   const [activeTab, setActiveTab] = useState('branding');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [smtpError, setSmtpError] = useState('');
   
   // Tab 1: Branding
   const [saasName, setSaasName] = useState('');
@@ -26,7 +29,9 @@ export default function SuperAdminSettingsPage() {
     smtp_port: '',
     smtp_username: '',
     smtp_password: '',
-    smtp_encryption: 'tls'
+    smtp_encryption: 'tls',
+    enable_registration: false,
+    maintenance_mode: false
   });
 
   // Tab 3: Profile
@@ -57,7 +62,9 @@ export default function SuperAdminSettingsPage() {
         smtp_port: data.smtp_port || '',
         smtp_username: data.smtp_username || '',
         smtp_password: data.smtp_password || '', // Backend masks this if set
-        smtp_encryption: data.smtp_encryption || 'tls'
+        smtp_encryption: data.smtp_encryption || 'tls',
+        enable_registration: data.enable_registration === '1' || data.enable_registration === true,
+        maintenance_mode: data.maintenance_mode === '1' || data.maintenance_mode === true
       });
     } catch (err) {
       console.error('Failed to load settings', err);
@@ -68,7 +75,7 @@ export default function SuperAdminSettingsPage() {
     const file = e.target.files?.[0];
     if (file) {
       if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
+        toast.error('Please select an image file');
         return;
       }
       const url = URL.createObjectURL(file);
@@ -96,12 +103,25 @@ export default function SuperAdminSettingsPage() {
       });
       
       playTaskSuccess();
-      alert('Global SaaS branding updated successfully!');
+      toast.success('Global SaaS branding updated successfully!');
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.message || 'Failed to update global branding');
+      toast.error(err.response?.data?.message || 'Failed to update global branding');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleInstantToggle = async (field: 'enable_registration' | 'maintenance_mode', value: boolean) => {
+    const backup = { ...systemPrefs };
+    setSystemPrefs(prev => ({ ...prev, [field]: value })); // Optimistic UI
+
+    try {
+      await api.post('/superadmin/settings', { [field]: value });
+      toast.success(`${field.replace('_', ' ')} ${value ? 'enabled' : 'disabled'}`);
+    } catch (err: any) {
+      setSystemPrefs(backup); // Rollback
+      toast.error(err.response?.data?.message || `Failed to toggle ${field}`);
     }
   };
 
@@ -111,12 +131,33 @@ export default function SuperAdminSettingsPage() {
     try {
       await api.post('/superadmin/settings', systemPrefs);
       playTaskSuccess();
-      alert('System & SMTP preferences updated successfully!');
+      toast.success('System & SMTP preferences updated successfully!');
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.message || 'Failed to update system preferences');
+      toast.error(err.response?.data?.message || 'Failed to update system preferences');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleTestSmtp = async () => {
+    setTestingSmtp(true);
+    setSmtpError('');
+    try {
+      await api.post('/superadmin/settings/test-smtp', {
+        smtp_host: systemPrefs.smtp_host,
+        smtp_port: systemPrefs.smtp_port,
+        smtp_username: systemPrefs.smtp_username,
+        smtp_password: systemPrefs.smtp_password,
+        smtp_encryption: systemPrefs.smtp_encryption
+      });
+      playTaskSuccess();
+      toast.success('SMTP Connection Successful!');
+    } catch (err: any) {
+      setSmtpError(err.response?.data?.message || 'Failed to connect to SMTP server.');
+      toast.error('SMTP Connection Failed');
+    } finally {
+      setTestingSmtp(false);
     }
   };
 
@@ -124,12 +165,17 @@ export default function SuperAdminSettingsPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      // Mock API call for profile
-      await new Promise(r => setTimeout(r, 500));
+      await api.put('/user/profile', {
+        name: profile.name,
+        email: profile.email,
+        password: profile.password || undefined,
+        two_factor_enabled: profile.two_factor_enabled
+      });
       playTaskSuccess();
-      alert('Admin profile updated successfully!');
-    } catch (err) {
+      toast.success('Admin profile updated successfully!');
+    } catch (err: any) {
       console.error(err);
+      toast.error(err.response?.data?.message || 'Failed to update admin profile');
     } finally {
       setSubmitting(false);
     }
@@ -245,7 +291,21 @@ export default function SuperAdminSettingsPage() {
                 </div>
                 
                 {/* SMTP Configuration */}
-                <h3 className="text-lg font-bold text-white mt-4 border-t border-border pt-4">SMTP Configuration</h3>
+                <div className="flex items-center justify-between mt-4 border-t border-border pt-4">
+                  <h3 className="text-lg font-bold text-white">SMTP Configuration</h3>
+                  <button type="button" onClick={handleTestSmtp} disabled={testingSmtp || !systemPrefs.smtp_host} className="bg-surface border border-border text-white hover:border-primary/50 px-4 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 flex items-center gap-2">
+                    {testingSmtp ? <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"/> : '📡'}
+                    {testingSmtp ? 'Testing...' : 'Test Connection'}
+                  </button>
+                </div>
+
+                {smtpError && (
+                  <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl text-sm font-mono whitespace-pre-wrap">
+                    <span className="font-bold text-rose-500 block mb-1">SMTP Connection Failed:</span>
+                    {smtpError}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-medium text-text-muted">SMTP Host</label>
@@ -272,7 +332,55 @@ export default function SuperAdminSettingsPage() {
                     </select>
                   </div>
                 </div>
-                <div className="flex justify-end pt-4">
+
+                <h3 className="text-lg font-bold text-white mt-8 border-t border-border pt-4">Global Feature Flags</h3>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="flex items-center justify-between p-4 bg-surface/50 border border-border rounded-xl">
+                    <div>
+                      <h4 className="font-bold text-white">Enable Public Registration</h4>
+                      <p className="text-sm text-text-muted">Allow new users to sign up and create businesses.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" className="sr-only peer" checked={systemPrefs.enable_registration} onChange={e => handleInstantToggle('enable_registration', e.target.checked)} />
+                      <div className="w-11 h-6 bg-surface peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-text-muted peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary border border-border"></div>
+                    </label>
+                  </div>
+                  <div className="flex flex-col gap-4 p-4 bg-danger/10 border border-danger/20 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-danger">Maintenance Mode (API Lockout)</h4>
+                        <p className="text-sm text-danger/80">Take the entire SaaS offline (returns 503 to all tenants).</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" className="sr-only peer" checked={systemPrefs.maintenance_mode} onChange={async (e) => {
+                          const isEnabled = e.target.checked;
+                          const msg = (document.getElementById('maintenance_msg') as HTMLInputElement)?.value || 'System under maintenance.';
+                          const backup = systemPrefs.maintenance_mode;
+                          setSystemPrefs(prev => ({ ...prev, maintenance_mode: isEnabled }));
+                          try {
+                            const res = await api.post('/superadmin/maintenance/toggle', { enabled: isEnabled, message: msg });
+                            if (res.data.bypass_url) toast.success(`Bypass URL: ${res.data.bypass_url}`, { duration: 10000 });
+                            else toast.success(res.data.message);
+                          } catch (err: any) {
+                            setSystemPrefs(prev => ({ ...prev, maintenance_mode: backup }));
+                            toast.error(err.response?.data?.message || 'Failed to toggle maintenance mode');
+                          }
+                        }} />
+                        <div className="w-11 h-6 bg-surface peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-danger peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-danger border border-danger/50"></div>
+                      </label>
+                    </div>
+                    {systemPrefs.maintenance_mode ? (
+                       <div className="bg-danger/20 p-3 rounded-lg border border-danger/30">
+                         <p className="text-xs text-white font-bold mb-1">Active Bypass Secret (Save this URL!)</p>
+                         <p className="text-xs text-danger font-mono break-all bg-background/50 p-2 rounded">Check your recent toast or audit logs to recover your bypass URL if you lose access.</p>
+                       </div>
+                    ) : (
+                      <input id="maintenance_msg" placeholder="Optional offline message for tenants..." className="bg-background border border-danger/20 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-danger/50 transition-colors w-full" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-8">
                   <button type="submit" disabled={submitting} className="bg-primary hover:brightness-110 text-white px-8 py-3 rounded-xl font-bold transition-all duration-150 active:scale-[0.97] shadow-lg disabled:opacity-50">
                     {submitting ? 'Saving...' : 'Save System Preferences'}
                   </button>

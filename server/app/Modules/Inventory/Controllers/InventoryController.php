@@ -251,6 +251,9 @@ class InventoryController extends Controller
             'threshold' => (int) $threshold,
             'count' => $lowStockItems->count(),
             'items' => $lowStockItems,
+        ]);
+    }
+
     /**
      * Get Inventory History (Audit Logs)
      */

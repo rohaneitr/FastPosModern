@@ -13,6 +13,8 @@ class Subscription extends Model
         'trial_ends_at' => 'datetime',
         'current_period_start' => 'datetime',
         'current_period_end' => 'datetime',
+        'limit_overrides' => 'array',
+        'module_overrides' => 'array',
     ];
 
     public function business()
@@ -39,5 +41,37 @@ class Subscription extends Model
     public function isPastDue()
     {
         return $this->status === 'past_due' || ($this->status === 'active' && $this->current_period_end && $this->current_period_end->isPast());
+    }
+
+    public function getResolvedUserLimitAttribute()
+    {
+        $base = $this->plan ? ($this->plan->user_limit ?? $this->plan->max_users ?? 0) : 0;
+        return $base + ($this->limit_overrides['user_limit'] ?? 0);
+    }
+
+    public function getResolvedLocationLimitAttribute()
+    {
+        $base = $this->plan ? ($this->plan->location_limit ?? $this->plan->max_locations ?? 0) : 0;
+        return $base + ($this->limit_overrides['location_limit'] ?? 0);
+    }
+
+    public function getResolvedDeviceLimitAttribute()
+    {
+        $base = $this->plan ? ($this->plan->device_limit ?? 0) : 0;
+        return $base + ($this->limit_overrides['device_limit'] ?? 0);
+    }
+
+    public function getResolvedModulesAttribute()
+    {
+        $base = $this->plan ? ($this->plan->enabled_modules ?? []) : [];
+        if (is_string($base)) {
+            $base = json_decode($base, true) ?? [];
+        }
+        
+        $added = $this->module_overrides['added'] ?? [];
+        $removed = $this->module_overrides['removed'] ?? [];
+
+        $resolved = array_merge($base, $added);
+        return array_values(array_diff(array_unique($resolved), $removed));
     }
 }

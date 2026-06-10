@@ -104,7 +104,7 @@ export function ProductGrid({
         {isLoading ? (
           <div className="flex justify-center items-center h-full text-text-muted">Loading products...</div>
         ) : (
-          <div className="grid grid-cols-3 xl:grid-cols-4 gap-4 pb-12">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 pb-12">
             {filteredProducts.map((p) => (
               <div 
                 key={p.id} 
@@ -120,6 +120,11 @@ export function ProductGrid({
                   <div className="text-sm text-primary font-semibold mt-1">
                     {format(parseFloat(p.price || p.sell_price_inc_tax || 0))}
                   </div>
+                  {hasPharmacyModule && (p.closest_expiry || p.expiry_date) && (
+                    <div className="text-[10px] text-rose-400 mt-1 font-bold bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                      Exp: {new Date(p.closest_expiry || p.expiry_date).toLocaleDateString()}
+                    </div>
+                  )}
                 </div>
                 {hasPharmacyModule && p.generic_name && (
                   <button 

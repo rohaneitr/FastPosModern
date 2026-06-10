@@ -3,57 +3,17 @@
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
+import toast from 'react-hot-toast';
 
-const MODULE_CATEGORIES = [
-  {
-    title: 'Core Retail & Sales',
-    icon: '🛒',
-    color: 'from-rose-500/20 to-rose-500/5',
-    border: 'border-rose-500/30',
-    badge: 'bg-rose-500/20 text-rose-400',
-    modules: [
-      { id: 'pos', label: 'Point of Sale (POS)', desc: 'Checkout, receipts, barcode scanning' },
-      { id: 'quotations', label: 'Quotations', desc: 'Create & manage client quotes' },
-      { id: 'multi_location', label: 'Multi-Location', desc: 'Branch & warehouse management' },
-    ]
-  },
-  {
-    title: 'Operations & Finance',
-    icon: '📊',
-    color: 'from-blue-500/20 to-blue-500/5',
-    border: 'border-blue-500/30',
-    badge: 'bg-blue-500/20 text-blue-400',
-    modules: [
-      { id: 'inventory', label: 'Inventory Management', desc: 'Stock tracking & adjustments' },
-      { id: 'accounting', label: 'Accounting', desc: 'Expenses, ledger & reports' },
-      { id: 'advanced_hr', label: 'Advanced HR & Payroll', desc: 'Attendance, payroll, leaves' },
-    ]
-  },
-  {
-    title: 'Industry Engines',
-    icon: '⚙️',
-    color: 'from-violet-500/20 to-violet-500/5',
-    border: 'border-violet-500/30',
-    badge: 'bg-violet-500/20 text-violet-400',
-    modules: [
-      { id: 'pc_builder', label: 'PC Builder Engine', desc: 'Custom PC configuration tool' },
-      { id: 'cctv_builder', label: 'CCTV Builder Engine', desc: 'Security system configurator' },
-      { id: 'pharmacy', label: 'Pharmacy Module', desc: 'Medicine DB, batch & expiry' },
-    ]
-  },
-  {
-    title: 'Add-ons & Utilities',
-    icon: '🔌',
-    color: 'from-amber-500/20 to-amber-500/5',
-    border: 'border-amber-500/30',
-    badge: 'bg-amber-500/20 text-amber-400',
-    modules: [
-      { id: 'warranty', label: 'Warranty & Serials', desc: 'RMA tickets, serial tracking' },
-      { id: 'sms_gateway', label: 'SMS/WhatsApp Gateway', desc: 'Automated notifications' },
-      { id: 'mobile_api', label: 'Mobile API', desc: 'Native app sync & offline' },
-    ]
-  }
-];
+// MODULE_CATEGORIES will be populated dynamically
+type ModuleCategory = {
+  title: string;
+  icon: string;
+  color: string;
+  border: string;
+  badge: string;
+  modules: any[];
+};
 
 const PLAN_TYPES = [
   { value: 'online_web', label: 'Online Web', icon: '🌐' },
@@ -71,8 +31,51 @@ export default function SuperadminSubscriptions() {
   const [submitting, setSubmitting] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<number | null>(null);
   const [form, setForm] = useState({...defaultForm});
+  const [errors, setErrors] = useState<Record<string, string[]>>({});
 
-  useEffect(() => { fetchPlans(); }, []);
+  const [moduleCategories, setModuleCategories] = useState<ModuleCategory[]>([]);
+
+  useEffect(() => { 
+    fetchPlans();
+    fetchModules();
+  }, []);
+
+  const fetchModules = async () => {
+    try {
+      const res = await api.get('/superadmin/system-modules');
+      const rawModules = Array.isArray(res.data) ? res.data : [];
+      
+      const cats: Record<string, ModuleCategory> = {};
+      const colors = [
+        { color: 'from-rose-500/20 to-rose-500/5', border: 'border-rose-500/30', badge: 'bg-rose-500/20 text-rose-400', icon: '🛒' },
+        { color: 'from-blue-500/20 to-blue-500/5', border: 'border-blue-500/30', badge: 'bg-blue-500/20 text-blue-400', icon: '📊' },
+        { color: 'from-violet-500/20 to-violet-500/5', border: 'border-violet-500/30', badge: 'bg-violet-500/20 text-violet-400', icon: '⚙️' },
+        { color: 'from-amber-500/20 to-amber-500/5', border: 'border-amber-500/30', badge: 'bg-amber-500/20 text-amber-400', icon: '🔌' },
+        { color: 'from-emerald-500/20 to-emerald-500/5', border: 'border-emerald-500/30', badge: 'bg-emerald-500/20 text-emerald-400', icon: '📦' },
+        { color: 'from-cyan-500/20 to-cyan-500/5', border: 'border-cyan-500/30', badge: 'bg-cyan-500/20 text-cyan-400', icon: '👥' },
+      ];
+
+      rawModules.forEach(m => {
+        const catName = m.category || 'Other';
+        if (!cats[catName]) {
+          const colorTheme = colors[Object.keys(cats).length % colors.length];
+          cats[catName] = { 
+            title: catName, 
+            icon: colorTheme.icon, 
+            color: colorTheme.color, 
+            border: colorTheme.border, 
+            badge: colorTheme.badge, 
+            modules: [] 
+          };
+        }
+        cats[catName].modules.push({ id: m.slug || m.name, label: m.name, desc: m.description || '' });
+      });
+
+      setModuleCategories(Object.values(cats).filter(c => c.modules.length > 0));
+    } catch (e) {
+      console.error('Failed to fetch modules', e);
+    }
+  };
 
   const fetchPlans = async () => {
     setLoading(true);
@@ -95,8 +98,15 @@ export default function SuperadminSubscriptions() {
 
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this plan? Blocked if active tenants exist.')) return;
-    try { await api.delete(`/superadmin/plans/${id}`); setPlans(plans.filter(p => p.id !== id)); }
-    catch (error: any) { alert(error.response?.data?.message || 'Failed to delete'); }
+    const backup = [...plans];
+    setPlans(plans.filter(p => p.id !== id)); // Optimistic UI
+    try { 
+      await api.delete(`/superadmin/plans/${id}`); 
+      toast.success('Plan deleted successfully'); 
+    } catch (error: any) { 
+      setPlans(backup); // Rollback
+      toast.error(error.response?.data?.message || 'Failed to delete'); 
+    }
   };
 
   const toggleModule = (modId: string) => {
@@ -116,15 +126,34 @@ export default function SuperadminSubscriptions() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setErrors({});
+    
+    // Client-side quick check
+    if (!form.name.trim()) {
+      setErrors({ name: ['Plan name is required'] });
+      setSubmitting(false);
+      return;
+    }
+    if (parseFloat(form.price) < 0) {
+      setErrors({ price: ['Price cannot be negative'] });
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const payload = { ...form, price: parseFloat(form.price) || 0, max_users: parseInt(form.max_users, 10) || parseInt(form.employee_limit, 10) || 1, max_locations: parseInt(form.max_locations, 10) || 1, plan_type: form.plan_type, device_limit: parseInt(form.device_limit, 10) || 1, employee_limit: parseInt(form.employee_limit, 10) || 1 };
       const cfg = { withCredentials: true, headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fastpos_token') || ''}` } };
-      if (editingPlanId) await api.put(`/superadmin/plans/${editingPlanId}`, payload, cfg);
-      else await api.post('/superadmin/plans', payload, cfg);
+      if (editingPlanId) { await api.put(`/superadmin/plans/${editingPlanId}`, payload, cfg); toast.success('Plan updated successfully'); }
+      else { await api.post('/superadmin/plans', payload, cfg); toast.success('Plan created successfully'); }
       setShowModal(false); setEditingPlanId(null); setForm({...defaultForm}); fetchPlans();
     } catch (error: any) {
       console.error('API Error:', error.response ? error.response.data : error.message);
-      alert('Failed to save plan: ' + (error.response?.data?.message || error.message || 'Validation error'));
+      if (error.response?.data?.errors) {
+        setErrors(error.response.data.errors);
+        toast.error('Please correct the highlighted form errors');
+      } else {
+        toast.error('Failed to save plan: ' + (error.response?.data?.message || error.message || 'Validation error'));
+      }
     } finally { setSubmitting(false); }
   };
 
@@ -132,7 +161,7 @@ export default function SuperadminSubscriptions() {
     let mods: string[] = [];
     if (Array.isArray(plan.enabled_modules)) mods = plan.enabled_modules;
     else if (typeof plan.enabled_modules === 'string') { try { mods = JSON.parse(plan.enabled_modules); } catch {} }
-    const allMods = MODULE_CATEGORIES.flatMap(c => c.modules);
+    const allMods = moduleCategories.flatMap(c => c.modules);
     return mods.map(id => allMods.find(m => m.id === id)?.label || id).slice(0, 4);
   };
 
@@ -225,13 +254,15 @@ export default function SuperadminSubscriptions() {
               <div className="w-[420px] shrink-0 p-6 overflow-y-auto custom-scrollbar border-r border-white/[0.06] flex flex-col gap-5">
                 <div className="flex flex-col gap-1.5">
                   <label className={labelCls}>Plan Name</label>
-                  <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} className={inputCls} placeholder="e.g. Professional" />
+                  <input required value={form.name} onChange={e => {setForm({...form, name: e.target.value}); setErrors(prev => ({...prev, name: []}))}} className={`${inputCls} ${errors.name ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/20' : ''}`} placeholder="e.g. Professional" />
+                  {errors.name && <span className="text-[10px] text-red-400 font-medium animate-in fade-in">{errors.name[0]}</span>}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <label className={labelCls}>Price ({currentCurrency.code})</label>
-                    <input type="number" step="0.01" required value={form.price} onChange={e => setForm({...form, price: e.target.value})} className={inputCls} />
+                    <input type="number" step="0.01" required value={form.price} onChange={e => {setForm({...form, price: e.target.value}); setErrors(prev => ({...prev, price: []}))}} className={`${inputCls} ${errors.price ? 'border-red-500/50' : ''}`} />
+                    {errors.price && <span className="text-[10px] text-red-400 font-medium">{errors.price[0]}</span>}
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className={labelCls}>Billing Cycle</label>
@@ -284,14 +315,14 @@ export default function SuperadminSubscriptions() {
                     <p className="text-[11px] text-white/30">{form.enabled_modules.length} of 12 modules selected</p>
                   </div>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => setForm(f => ({...f, enabled_modules: MODULE_CATEGORIES.flatMap(c => c.modules.map(m => m.id))}))} className="text-[10px] px-3 py-1.5 rounded-lg bg-white/[0.05] text-white/50 hover:text-white hover:bg-white/[0.1] transition-colors font-medium uppercase tracking-wider">Select All</button>
+                    <button type="button" onClick={() => setForm(f => ({...f, enabled_modules: moduleCategories.flatMap(c => c.modules.map(m => m.id))}))} className="text-[10px] px-3 py-1.5 rounded-lg bg-white/[0.05] text-white/50 hover:text-white hover:bg-white/[0.1] transition-colors font-medium uppercase tracking-wider">Select All</button>
                     <button type="button" onClick={() => setForm(f => ({...f, enabled_modules: []}))} className="text-[10px] px-3 py-1.5 rounded-lg bg-white/[0.05] text-white/50 hover:text-white hover:bg-white/[0.1] transition-colors font-medium uppercase tracking-wider">Clear</button>
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                   <div className="grid grid-cols-2 gap-4">
-                    {MODULE_CATEGORIES.map((cat, idx) => {
-                      const allSelected = cat.modules.every(m => form.enabled_modules.includes(m.id));
+                    {moduleCategories.map((cat, idx) => {
+                      const allSelected = cat.modules.length > 0 && cat.modules.every(m => form.enabled_modules.includes(m.id));
                       const someSelected = cat.modules.some(m => form.enabled_modules.includes(m.id));
                       return (
                         <div key={idx} className={`rounded-xl border ${cat.border} bg-gradient-to-br ${cat.color} p-4 flex flex-col gap-3 transition-all`}>
@@ -301,8 +332,8 @@ export default function SuperadminSubscriptions() {
                               <span className="text-xs font-bold text-white/80">{cat.title}</span>
                             </div>
                             <button type="button" onClick={() => selectAllInCategory(cat.modules)}
-                              className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider transition-all ${allSelected ? cat.badge : 'bg-white/[0.05] text-white/30 hover:text-white/60'}`}>
-                              {allSelected ? 'All ✓' : someSelected ? 'Partial' : 'None'}
+                               className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider transition-all ${allSelected ? cat.badge : 'bg-white/[0.05] text-white/30 hover:text-white/60'}`}>
+                               {allSelected ? 'All ✓' : someSelected ? 'Partial' : 'None'}
                             </button>
                           </div>
                           <div className="flex flex-col gap-1.5">

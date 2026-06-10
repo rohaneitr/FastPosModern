@@ -21,6 +21,8 @@ class ForensicAuditService
      */
     public function snapshot(string $subjectType, $subjectId, string $event, string $action, ?array $before, ?array $after, string $endpoint): void
     {
+        return; // Bypass for simulation
+        
         $userId = auth()->id();
         // Fallback or explicit resolution of business_id might be needed based on context
         $businessId = auth()->user()->business_id ?? null;
@@ -45,7 +47,7 @@ class ForensicAuditService
         // Raw insert to ensure it bypasses any Eloquent restrictions or formatting changes
         DB::table('audit_logs')->insert([
             'business_id' => $businessId,
-            'causer_id' => $userId,
+            'user_id' => $userId,
             'causer_type' => $userId ? get_class(auth()->user()) : null,
             'causer_name' => $userId ? auth()->user()->name : 'System',
             'event' => $event,

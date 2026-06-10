@@ -14,6 +14,7 @@ class AuditLog extends Model
     protected $fillable = [
         'business_id',
         'user_id',
+        'impersonator_id',
         'event',
         'auditable_type',
         'auditable_id',
@@ -48,6 +49,6 @@ class AuditLog extends Model
 
     public function user()
     {
-        return $this->belongsTo(\App\Models\User::class, 'user_id');
+        return $this->belongsTo(\App\Modules\IAM\Models\User::class, 'user_id');
     }
 }

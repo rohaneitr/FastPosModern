@@ -41,12 +41,13 @@ class DashboardOverviewController extends Controller
 
             $businessIds = $recentTenants->pluck('id')->toArray();
             $deviceCounts = [];
-            if (!empty($businessIds) && \Illuminate\Support\Facades\Schema::hasTable('device_activations')) {
-                $deviceCounts = DB::table('device_activations')
-                    ->whereIn('business_id', $businessIds)
-                    ->where('status', 'active')
-                    ->select('business_id', DB::raw('count(*) as active_devices'))
-                    ->groupBy('business_id')
+            if (!empty($businessIds) && \Illuminate\Support\Facades\Schema::hasTable('user_devices')) {
+                $deviceCounts = DB::table('user_devices')
+                    ->join('users', 'user_devices.user_id', '=', 'users.id')
+                    ->whereIn('users.business_id', $businessIds)
+                    ->where('user_devices.status', 'active')
+                    ->select('users.business_id', DB::raw('count(*) as active_devices'))
+                    ->groupBy('users.business_id')
                     ->pluck('active_devices', 'business_id')
                     ->toArray();
             }
@@ -86,10 +87,10 @@ class DashboardOverviewController extends Controller
         try {
             $sevenDaysFromNow = Carbon::now()->addDays(7)->toDateTimeString();
             $now = Carbon::now()->toDateTimeString();
-            $expiringCount = DB::table('licenses')
+            $expiringCount = DB::table('subscriptions')
                 ->where('status', 'active')
-                ->whereNotNull('expires_at')
-                ->whereBetween('expires_at', [$now, $sevenDaysFromNow])
+                ->whereNotNull('current_period_end')
+                ->whereBetween('current_period_end', [$now, $sevenDaysFromNow])
                 ->count();
             if ($expiringCount > 0) {
                 $systemAlerts[] = [
@@ -116,7 +117,7 @@ class DashboardOverviewController extends Controller
             }
             if ($failedLogins === 0 && \Illuminate\Support\Facades\Schema::hasTable('user_activities')) {
                 $failedLogins = DB::table('user_activities')
-                    ->where('activity', 'like', '%login failed%')
+                    ->where('action', 'like', '%login failed%')
                     ->where('created_at', '>=', $yesterday)
                     ->count();
             }
@@ -136,14 +137,16 @@ class DashboardOverviewController extends Controller
 
         // Device Limit Alert
         try {
-            if (\Illuminate\Support\Facades\Schema::hasTable('device_activations')) {
+            if (\Illuminate\Support\Facades\Schema::hasTable('user_devices')) {
                 $deviceLimitCheck = DB::select("
-                    SELECT d.business_id, COUNT(d.id) as active_count, l.device_limit
-                    FROM device_activations d
-                    JOIN licenses l ON d.license_key = l.license_key
-                    WHERE d.status = 'active' AND l.status = 'active'
-                    GROUP BY d.business_id, l.device_limit
-                    HAVING COUNT(d.id) >= l.device_limit
+                    SELECT u.business_id, COUNT(d.id) as active_count, p.device_limit
+                    FROM user_devices d
+                    JOIN users u ON d.user_id = u.id
+                    JOIN subscriptions s ON u.business_id = s.business_id
+                    JOIN plans p ON s.plan_id = p.id
+                    WHERE d.status = 'active' AND s.status = 'active'
+                    GROUP BY u.business_id, p.device_limit
+                    HAVING COUNT(d.id) >= p.device_limit
                 ");
                 
                 if (count($deviceLimitCheck) > 0) {
@@ -170,7 +173,26 @@ class DashboardOverviewController extends Controller
             ];
         }
 
+        // 3. KPIs
+        $kpis = \Illuminate\Support\Facades\Cache::get('superadmin_dashboard_kpis');
+        if (!$kpis) {
+            $lock = \Illuminate\Support\Facades\Cache::lock('aggregate_superadmin_kpis_lock', 10);
+            if ($lock->get()) {
+                // Dispatch command to queue instead of running synchronously
+                \Illuminate\Support\Facades\Artisan::queue('aggregate:superadmin-kpis');
+            }
+            
+            $kpis = [
+                'mrr' => 0,
+                'total_tenants' => 0,
+                'active_devices' => 0,
+                'failed_logins_24h' => 0,
+                'last_updated' => now()->toIso8601String()
+            ];
+        }
+
         return response()->json([
+            'kpis' => $kpis,
             'recent_tenants' => $recentTenants,
             'system_alerts' => $systemAlerts
         ]);

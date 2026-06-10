@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import toast from 'react-hot-toast';
 
 interface Reply {
   id: number;
@@ -34,9 +35,7 @@ export default function SuperadminSupportPage() {
   // Filter state
   const [statusFilter, setStatusFilter] = useState('all');
   
-  // Toast
-  const [toast, setToast] = useState<string | null>(null);
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+  const showToast = (msg: string) => { toast.error(msg); };
 
   useEffect(() => {
     fetchTickets();
@@ -115,12 +114,7 @@ export default function SuperadminSupportPage() {
   const filteredTickets = tickets.filter(t => statusFilter === 'all' || t.status === statusFilter);
 
   return (
-    <>
-      {toast && (
-        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-xl text-sm font-semibold bg-rose-500/15 border border-rose-500/30 text-rose-300 shadow-2xl animate-in slide-in-from-top-4 duration-300">
-          ❌ {toast}
-        </div>
-      )}
+
       <div className="flex flex-col h-full gap-8 animate-in fade-in duration-500 pb-12 w-full max-w-7xl mx-auto">
       <div className="flex justify-between items-end">
         <div>
@@ -272,6 +266,5 @@ export default function SuperadminSupportPage() {
         </div>
       )}
     </div>
-    </>
   );
 }

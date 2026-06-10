@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ const EVENT_META: Record<string, { label: string; icon: string; color: string }>
   tenant_deleted:  { label: 'Tenant Deleted',   icon: '🗑️', color: 'text-rose-500 bg-rose-500/15 border-rose-500/30' },
   license_revoked: { label: 'License Revoked',  icon: '🔒', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
   modules_updated: { label: 'Modules Updated',  icon: '🧩', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
+  impersonate_tenant: { label: 'Impersonation Track', icon: '🕵️‍♂️', color: 'text-fuchsia-400 bg-fuchsia-500/10 border-fuchsia-500/30' },
 };
 
 function eventMeta(event: string) {
@@ -96,19 +98,19 @@ export default function AuditLogsPage() {
   const [loading, setLoading]       = useState(true);
   const [search, setSearch]         = useState('');
   const [eventFilter, setEventFilter] = useState('');
+  const [activeTab, setActiveTab]   = useState<'all' | 'impersonation'>('all');
   const [page, setPage]             = useState(1);
-  const [toast, setToast]           = useState<string | null>(null);
-
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+  const showToast = (msg: string) => { toast.error(msg); };
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchLogs = useCallback(async () => {
-    setLoading(true);
+    if (logs.length === 0) setLoading(true); // Only hard load on initial fetch
     try {
       const { default: api } = await import('@/lib/api');
       const params = new URLSearchParams({ page: String(page) });
       if (search.trim())  params.set('search', search.trim());
-      if (eventFilter)    params.set('event', eventFilter);
+      if (activeTab === 'impersonation') params.set('event', 'impersonate_tenant');
+      else if (eventFilter) params.set('event', eventFilter);
       const res = await api.get(`/superadmin/audit-logs?${params}`);
       setData(res.data);
     } catch (err: any) {
@@ -116,7 +118,7 @@ export default function AuditLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, eventFilter]);
+  }, [page, search, eventFilter, activeTab]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
@@ -126,12 +128,7 @@ export default function AuditLogsPage() {
   const eventTypes = data?.event_types ?? [];
 
   return (
-    <>
-      {toast && (
-        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-xl text-sm font-semibold bg-rose-500/15 border border-rose-500/30 text-rose-300 shadow-2xl animate-in slide-in-from-top-4 duration-300">
-          ❌ {toast}
-        </div>
-      )}
+
 
       <div className="flex flex-col gap-8 animate-in fade-in duration-500 pb-12">
         {/* Header */}
@@ -151,11 +148,22 @@ export default function AuditLogsPage() {
             className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold border border-border text-text-muted hover:text-white transition-colors flex items-center gap-2"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-              className={loading ? 'animate-spin' : ''}>
+              className={`transition-transform duration-500 ${loading ? 'rotate-180 opacity-50' : ''}`}>
               <polyline points="23 4 23 10 17 10"/>
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
             </svg>
             Refresh
+          </button>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex bg-surface/50 p-1 rounded-xl border border-border w-full sm:w-max">
+          <button onClick={() => { setActiveTab('all'); setPage(1); setEventFilter(''); }} className={`flex-1 sm:px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'all' ? 'bg-background shadow text-white' : 'text-text-muted hover:text-white'}`}>
+            All Audit Logs
+          </button>
+          <button onClick={() => { setActiveTab('impersonation'); setPage(1); }} className={`flex-1 sm:px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 justify-center ${activeTab === 'impersonation' ? 'bg-fuchsia-500/20 text-fuchsia-400 shadow shadow-fuchsia-500/10' : 'text-text-muted hover:text-fuchsia-400'}`}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Impersonation Track Record
           </button>
         </div>
 
@@ -177,25 +185,35 @@ export default function AuditLogsPage() {
           </div>
 
           {/* Event type filter */}
-          <select
-            id="audit_event_filter"
-            value={eventFilter}
-            onChange={e => { setEventFilter(e.target.value); setPage(1); }}
-            className="bg-surface border border-border rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-slate-500/60 cursor-pointer transition-colors"
-          >
-            <option value="">All Events</option>
-            {eventTypes.map(et => (
-              <option key={et} value={et}>{eventMeta(et).icon} {eventMeta(et).label}</option>
-            ))}
-          </select>
+          {activeTab === 'all' && (
+            <select
+              id="audit_event_filter"
+              value={eventFilter}
+              onChange={e => { setEventFilter(e.target.value); setPage(1); }}
+              className="bg-surface border border-border rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-slate-500/60 cursor-pointer transition-colors"
+            >
+              <option value="">All Events</option>
+              {eventTypes.map(et => (
+                <option key={et} value={et}>{eventMeta(et).icon} {eventMeta(et).label}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Log feed */}
         <div className="flex flex-col gap-3">
-          {loading ? (
-            <div className="flex items-center justify-center py-20 gap-3 text-text-muted">
-              <span className="w-5 h-5 border-2 border-slate-500/30 border-t-slate-400 rounded-full animate-spin" />
-              Loading audit trail…
+          {loading && logs.length === 0 ? (
+            <div className="flex flex-col gap-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="bg-surface/30 border border-border/50 rounded-xl p-5 flex gap-4 animate-pulse">
+                  <div className="w-10 h-10 rounded-full bg-surface/80 shrink-0"></div>
+                  <div className="flex-1 flex flex-col gap-2">
+                    <div className="flex items-center gap-2"><div className="w-24 h-4 bg-surface/80 rounded"></div><div className="w-16 h-4 bg-surface/80 rounded"></div></div>
+                    <div className="w-3/4 h-3 bg-surface/80 rounded"></div>
+                  </div>
+                  <div className="w-20 h-4 bg-surface/80 rounded shrink-0"></div>
+                </div>
+              ))}
             </div>
           ) : logs.length === 0 ? (
             <div className="flex flex-col items-center py-20 gap-4 text-text-muted">
@@ -226,6 +244,16 @@ export default function AuditLogsPage() {
                           <span className="px-2 py-0.5 rounded-lg text-xs font-medium bg-surface/60 text-text-muted border border-border">
                             {entry.subject_type} #{entry.subject_id}
                             {entry.subject_label && ` — ${entry.subject_label}`}
+                          </span>
+                        )}
+                        {(entry.properties?.impersonator_name || entry.properties?.impersonated_by) && (
+                          <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-fuchsia-500/20 text-fuchsia-400 border border-fuchsia-500/40 shadow-[0_0_10px_rgba(217,70,239,0.3)] animate-pulse">
+                            🕵️‍♂️ [God-Mode: Impersonated by {entry.properties?.impersonator_name || entry.properties?.impersonated_by}]
+                          </span>
+                        )}
+                        {entry.event === 'impersonate_tenant' && (
+                          <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-fuchsia-500/20 text-fuchsia-400 border border-fuchsia-500/40 shadow-[0_0_10px_rgba(217,70,239,0.3)]">
+                            🕵️‍♂️ [God-Mode Session Initiated]
                           </span>
                         )}
                       </div>
@@ -278,6 +306,5 @@ export default function AuditLogsPage() {
           </div>
         )}
       </div>
-    </>
   );
 }

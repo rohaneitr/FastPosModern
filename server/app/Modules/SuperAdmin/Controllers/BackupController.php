@@ -33,26 +33,23 @@ class BackupController extends Controller
         return response()->json($backups);
     }
 
-    public function run()
+    public function run(Request $request)
     {
-        $dbName = env('DB_DATABASE');
-        $dbUser = env('DB_USERNAME');
-        $dbPass = env('DB_PASSWORD');
-        $dbHost = env('DB_HOST', '127.0.0.1');
-        $dbPort = env('DB_PORT', '5432');
-        
-        $fileName = 'backup_' . date('Y_m_d_H_i_s') . '.sql.gz';
-        $path = storage_path('app/backups/' . $fileName);
-        
-        if (!File::exists(storage_path('app/backups'))) {
-            File::makeDirectory(storage_path('app/backups'), 0755, true);
-        }
+        // Dispatch the asynchronous backup job
+        dispatch(new \App\Modules\SuperAdmin\Jobs\RunSystemBackupJob());
 
-        // Run pg_dump asynchronously
-        $command = "PGPASSWORD='{$dbPass}' pg_dump -h {$dbHost} -p {$dbPort} -U {$dbUser} -d {$dbName} | gzip > {$path}";
-        exec($command . ' > /dev/null 2>&1 &');
+        // Log the backup trigger
+        \App\Modules\Tenant\Services\AuditLogger::log(
+            0,
+            $request->user(),
+            'system_backup_triggered',
+            'System',
+            0,
+            [],
+            ['message' => 'System Backup triggered by SuperAdmin']
+        );
 
-        return response()->json(['message' => 'Backup queued successfully.']);
+        return response()->json(['message' => 'Backup queued successfully. It will run in the background.']);
     }
 
     public function download(Request $request)

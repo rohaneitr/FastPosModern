@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Loader2, Package, Tag, Hash, FileEdit, Trash2, X } from 'lucide-react';
 import api from '@/lib/api';
+import { FeatureGate } from '@/components/common/FeatureGate';
 
 // Interfaces
 interface Category {
@@ -188,15 +189,17 @@ export default function ProductsPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm whitespace-nowrap shadow-sm hover:shadow"
-          >
-            <Plus className="w-4 h-4" />
-            Add New Product
-          </button>
+            <FeatureGate permission="product.create">
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm whitespace-nowrap shadow-sm hover:shadow"
+              >
+                <Plus className="w-4 h-4" />
+                Add New Product
+              </button>
+            </FeatureGate>
+          </div>
         </div>
-      </div>
 
       {/* Data Table section */}
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -234,13 +237,15 @@ export default function ProductsPage() {
                         {searchQuery ? "We couldn't find any products matching your search." : "Get started by adding your first product to the inventory."}
                       </p>
                       {!searchQuery && (
-                        <button 
-                          onClick={() => setIsModalOpen(true)}
-                          className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-white dark:text-slate-900 text-white rounded-lg font-medium transition-colors text-sm hover:opacity-90 shadow-sm"
-                        >
-                          <Plus className="w-4 h-4" />
-                          Add Product
-                        </button>
+                        <FeatureGate permission="product.create">
+                          <button 
+                            onClick={() => setIsModalOpen(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-white dark:text-slate-900 text-white rounded-lg font-medium transition-colors text-sm hover:opacity-90 shadow-sm"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Add Product
+                          </button>
+                        </FeatureGate>
                       )}
                     </div>
                   </td>
@@ -292,12 +297,16 @@ export default function ProductsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors" title="Edit">
-                          <FileEdit className="w-4 h-4" />
-                        </button>
-                        <button className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="Delete">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <FeatureGate permission="product.update">
+                          <button className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors" title="Edit">
+                            <FileEdit className="w-4 h-4" />
+                          </button>
+                        </FeatureGate>
+                        <FeatureGate permission="product.delete">
+                          <button className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="Delete">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </FeatureGate>
                       </div>
                     </td>
                   </tr>

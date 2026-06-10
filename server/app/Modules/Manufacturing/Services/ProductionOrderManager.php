@@ -5,6 +5,8 @@ namespace App\Modules\Manufacturing\Services;
 use Illuminate\Support\Facades\DB;
 use App\Modules\Manufacturing\Exceptions\InvalidStateException;
 use App\Modules\Manufacturing\Exceptions\InsufficientStockException;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Carbon\Carbon;
 
 class ProductionOrderManager
@@ -37,23 +39,23 @@ class ProductionOrderManager
                 ->where('production_order_id', $orderId)
                 ->get();
 
-            $totalRawMaterialCost = '0.0000';
-            $totalScrapCost = '0.0000';
+            $totalRawMaterialCost = BigDecimal::zero();
+            $totalScrapCost = BigDecimal::zero();
 
             // 1. Process Material Consumption and FIFO Locks
             foreach ($lines as $line) {
-                $qtyToConsume = $line->quantity_required;
+                $qtyToConsume = BigDecimal::of($line->quantity_required);
                 
                 // Add scrap qty to required consumption if any
-                $scrapQty = '0.0000';
+                $scrapQty = BigDecimal::zero();
                 foreach ($scrapPayload as $scrap) {
                     if ($scrap['raw_material_id'] == $line->raw_material_id) {
-                        $scrapQty = bcadd($scrapQty, (string)$scrap['qty'], 4);
+                        $scrapQty = $scrapQty->plus(BigDecimal::of($scrap['qty']));
                     }
                 }
                 
-                $totalQtyNeeded = bcadd((string)$qtyToConsume, $scrapQty, 4);
-                $remainingToConsume = $totalQtyNeeded;
+                $totalQtyNeeded = $qtyToConsume->plus($scrapQty);
+                $remainingToConsume = clone $totalQtyNeeded;
 
                 // FIFO Lock Layer
                 $purchaseLines = DB::table('purchase_lines')
@@ -63,52 +65,51 @@ class ProductionOrderManager
                     ->lockForUpdate()
                     ->get();
 
-                $lineAccumulatedCost = '0.0000';
-                $lineScrapCost = '0.0000';
+                $lineAccumulatedCost = BigDecimal::zero();
+                $lineScrapCost = BigDecimal::zero();
 
                 foreach ($purchaseLines as $pl) {
-                    if (bccomp($remainingToConsume, '0.0000', 4) <= 0) break;
+                    if ($remainingToConsume->isLessThanOrEqualTo(0)) break;
 
-                    $qtyAvailable = bcsub((string)$pl->quantity, (string)$pl->quantity_sold, 4);
-                    $consumeFromLayer = (bccomp($qtyAvailable, $remainingToConsume, 4) >= 0) ? $remainingToConsume : $qtyAvailable;
+                    $qtyAvailable = BigDecimal::of($pl->quantity)->minus(BigDecimal::of($pl->quantity_sold));
+                    $consumeFromLayer = ($qtyAvailable->isGreaterThanOrEqualTo($remainingToConsume)) ? clone $remainingToConsume : clone $qtyAvailable;
 
                     // Update Purchase Line Sold Qty
                     DB::table('purchase_lines')
                         ->where('id', $pl->id)
                         ->update([
-                            'quantity_sold' => DB::raw("quantity_sold + {$consumeFromLayer}")
+                            'quantity_sold' => DB::raw("quantity_sold + " . $consumeFromLayer->toScale(4)->__toString())
                         ]);
 
-                    $layerCost = bcmul($consumeFromLayer, (string)$pl->purchase_price, 4);
+                    $layerCost = $consumeFromLayer->multipliedBy(BigDecimal::of($pl->purchase_price));
 
-                    // We need to proportionally distribute this cost between raw mat and scrap based on remaining ratios.
-                    // For simplicity in this logic, we assign cost to scrap first, then to raw material.
-                    $layerScrapQty = (bccomp($consumeFromLayer, $scrapQty, 4) >= 0) ? $scrapQty : $consumeFromLayer;
-                    $layerRawQty = bcsub($consumeFromLayer, $layerScrapQty, 4);
+                    // Distribute cost between raw mat and scrap
+                    $layerScrapQty = ($consumeFromLayer->isGreaterThanOrEqualTo($scrapQty)) ? clone $scrapQty : clone $consumeFromLayer;
+                    $layerRawQty = $consumeFromLayer->minus($layerScrapQty);
                     
-                    $scrapQty = bcsub($scrapQty, $layerScrapQty, 4); // Reduce remaining scrap needed to cost
+                    $scrapQty = $scrapQty->minus($layerScrapQty);
                     
-                    $layerScrapCost = bcmul($layerScrapQty, (string)$pl->purchase_price, 4);
-                    $layerRawCost = bcmul($layerRawQty, (string)$pl->purchase_price, 4);
+                    $layerScrapCost = $layerScrapQty->multipliedBy(BigDecimal::of($pl->purchase_price));
+                    $layerRawCost = $layerRawQty->multipliedBy(BigDecimal::of($pl->purchase_price));
 
-                    $lineScrapCost = bcadd($lineScrapCost, $layerScrapCost, 4);
-                    $lineAccumulatedCost = bcadd($lineAccumulatedCost, $layerRawCost, 4);
+                    $lineScrapCost = $lineScrapCost->plus($layerScrapCost);
+                    $lineAccumulatedCost = $lineAccumulatedCost->plus($layerRawCost);
 
-                    $remainingToConsume = bcsub($remainingToConsume, $consumeFromLayer, 4);
+                    $remainingToConsume = $remainingToConsume->minus($consumeFromLayer);
                 }
 
-                if (bccomp($remainingToConsume, '0.0000', 4) > 0) {
+                if ($remainingToConsume->isGreaterThan(0)) {
                     throw new InsufficientStockException("Not enough stock for material ID {$line->raw_material_id}");
                 }
 
-                $totalRawMaterialCost = bcadd($totalRawMaterialCost, $lineAccumulatedCost, 4);
-                $totalScrapCost = bcadd($totalScrapCost, $lineScrapCost, 4);
+                $totalRawMaterialCost = $totalRawMaterialCost->plus($lineAccumulatedCost);
+                $totalScrapCost = $totalScrapCost->plus($lineScrapCost);
 
                 DB::table('production_order_lines')
                     ->where('id', $line->id)
                     ->update([
-                        'quantity_consumed' => $qtyToConsume,
-                        'accumulated_cost' => $lineAccumulatedCost,
+                        'quantity_consumed' => $qtyToConsume->toScale(4)->__toString(),
+                        'accumulated_cost' => $lineAccumulatedCost->toScale(4)->__toString(),
                         'updated_at' => now()
                     ]);
             }
@@ -128,9 +129,9 @@ class ProductionOrderManager
             }
 
             // 3. Dynamic Cost Accumulation Formula Block
-            $overheadCost = bcadd('0.0000', (string)$order->overhead_cost, 4);
-            $totalAccumulatedCost = bcadd(bcadd($totalRawMaterialCost, $totalScrapCost, 4), $overheadCost, 4);
-            $finalUnitCost = bcdiv($totalAccumulatedCost, (string)$order->quantity_planned, 4);
+            $overheadCost = BigDecimal::of($order->overhead_cost ?? '0.0000');
+            $totalAccumulatedCost = $totalRawMaterialCost->plus($totalScrapCost)->plus($overheadCost);
+            $finalUnitCost = $totalAccumulatedCost->dividedBy(BigDecimal::of($order->quantity_planned), 4, RoundingMode::HALF_UP);
 
             // 4. Inbound Asset Ledger Lock (Finished Goods)
             $transactionId = DB::table('transactions')->insertGetId([
@@ -159,13 +160,13 @@ class ProductionOrderManager
                 ->update([
                     'status' => 'Finished',
                     'quantity_produced' => $order->quantity_planned,
-                    'final_unit_cost' => $finalUnitCost,
+                    'final_unit_cost' => $finalUnitCost->toScale(4)->__toString(),
                     'updated_at' => now()
                 ]);
 
             return [
-                'final_unit_cost' => $finalUnitCost,
-                'total_cost' => $totalAccumulatedCost
+                'final_unit_cost' => $finalUnitCost->toScale(4)->__toString(),
+                'total_cost' => $totalAccumulatedCost->toScale(4)->__toString()
             ];
         });
     }

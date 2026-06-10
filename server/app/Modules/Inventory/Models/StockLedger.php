@@ -15,4 +15,14 @@ class StockLedger extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    public function delete()
+    {
+        throw new \Exception('Stock movements are immutable and cannot be deleted.');
+    }
+
+    public function forceDelete()
+    {
+        throw new \Exception('Stock movements are immutable and cannot be deleted.');
+    }
 }

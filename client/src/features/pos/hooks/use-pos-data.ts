@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import api from '@/lib/api';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/lib/db/db';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
@@ -34,8 +36,21 @@ export function usePOSData() {
     } catch {}
   }, []);
 
-  const products = Array.isArray(productsData?.data) ? productsData.data : Array.isArray(productsData) ? productsData : [];
+  const apiProducts = Array.isArray(productsData?.data) ? productsData.data : Array.isArray(productsData) ? productsData : [];
   const contacts = Array.isArray(contactsData?.data) ? contactsData.data : Array.isArray(contactsData) ? contactsData : [];
+
+  // Hydrate Local IndexedDB
+  useEffect(() => {
+    if (apiProducts.length > 0) {
+      db.products.bulkPut(apiProducts).catch(err => console.error('Failed to sync products to IDB', err));
+    }
+  }, [apiProducts]);
+
+  // Read natively from IndexedDB for zero-latency offline support
+  const localProducts = useLiveQuery(() => db.products.toArray(), []) || [];
+  
+  // Use localProducts as the single source of truth if available, otherwise fallback to API
+  const products = localProducts.length > 0 ? localProducts : apiProducts;
   
   const businessData = {
     name: settingsData?.business?.name || 'FastPOS',

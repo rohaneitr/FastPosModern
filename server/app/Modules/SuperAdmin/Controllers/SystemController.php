@@ -17,22 +17,35 @@ class SystemController extends Controller
         ]);
 
         if ($validated['enabled']) {
-            // We MUST use the --secret flag, otherwise the SuperAdmin themselves will be locked out and cannot turn it off
-            // via the API. The secret creates a bypass cookie when accessing `https://domain.com/superadmin-bypass`
-            Artisan::call('down', [
-                '--secret' => 'superadmin-bypass',
-                '--render' => 'errors::503' // Or a custom view
+            Cache::forever('maintenance_mode_enabled', true);
+            Cache::forever('maintenance_message', $validated['message'] ?? 'System under maintenance.');
+
+            \App\Modules\Tenant\Services\AuditLogger::log(
+                0, // 0 for SuperAdmin system level
+                $request->user(),
+                'maintenance_mode_enabled',
+                'System',
+                0,
+                [],
+                ['message' => 'System placed in Maintenance Mode (API Lockout) by SuperAdmin.']
+            );
+            
+            return response()->json([
+                'message' => 'System is now in Maintenance Mode. Tenant APIs are locked, SuperAdmin bypass active.'
             ]);
-            
-            // Optionally cache the message so the frontend can display it
-            if (!empty($validated['message'])) {
-                Cache::forever('maintenance_message', $validated['message']);
-            }
-            
-            return response()->json(['message' => 'System is now in Maintenance Mode. (Bypass secret: /superadmin-bypass)']);
         } else {
-            Artisan::call('up');
+            Cache::forget('maintenance_mode_enabled');
             Cache::forget('maintenance_message');
+
+            \App\Modules\Tenant\Services\AuditLogger::log(
+                0,
+                $request->user(),
+                'maintenance_mode_disabled',
+                'System',
+                0,
+                [],
+                ['message' => 'System Maintenance Mode disabled by SuperAdmin.']
+            );
             
             return response()->json(['message' => 'System is now Online.']);
         }

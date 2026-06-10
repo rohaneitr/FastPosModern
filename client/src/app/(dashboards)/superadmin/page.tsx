@@ -7,8 +7,8 @@ import { useCurrency } from '@/lib/currency';
 export default function SuperadminOverview() {
   const { t } = useTranslation();
   const { format, convert, currentCurrency } = useCurrency();
-  const [stats, setStats] = useState({ total_tenants: 0, active_subscriptions: 0, total_plans: 0, lifetime_revenue: 0, mrr: 0, arr: 0 });
-  const [overview, setOverview] = useState({ recent_tenants: [], system_alerts: [] });
+  const [stats, setStats] = useState<any>({ total_tenants: 0, active_subscriptions: 0, total_plans: 0, lifetime_revenue: 0, mrr: 0, arr: 0 });
+  const [overview, setOverview] = useState<any>({ recent_tenants: [], system_alerts: [], kpis: null });
   const [loading, setLoading] = useState(true);
 
   React.useEffect(() => {
@@ -31,7 +31,23 @@ export default function SuperadminOverview() {
   }, []);
 
   if (loading) {
-    return <div className="p-8 text-center text-text-muted">Loading overview...</div>;
+    return (
+      <div className="flex flex-col gap-8 animate-pulse pb-12 w-full max-w-7xl mx-auto">
+        <div>
+          <div className="h-8 bg-surface/50 rounded w-64 mb-2"></div>
+          <div className="h-4 bg-surface/50 rounded w-96"></div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-surface/30 border border-border p-6 rounded-2xl h-32"></div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-surface/30 border border-border rounded-2xl h-64"></div>
+          <div className="bg-surface/30 border border-border rounded-2xl h-64"></div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -44,29 +60,29 @@ export default function SuperadminOverview() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-surface/30 border border-border p-6 rounded-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl">🏢</div>
-          <p className="text-text-muted font-medium text-sm mb-1">{t('superadmin.activeTenants')}</p>
-          <h2 className="text-4xl font-bold text-white">{stats.total_tenants}</h2>
-          <p className="text-success text-xs font-bold mt-2">Live Data</p>
-        </div>
         <div className="bg-surface/30 border border-emerald-500/30 p-6 rounded-2xl relative overflow-hidden shadow-[0_0_15px_rgba(16,185,129,0.1)]">
           <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl text-emerald-500">💰</div>
-          <p className="text-emerald-400 font-medium text-sm mb-1 uppercase tracking-wider">Monthly Recurring (MRR)</p>
-          <h2 className="text-4xl font-black text-white">{format(convert(parseFloat(stats.mrr as any) || 0, 'USD', currentCurrency.code), currentCurrency.code)}</h2>
-          <p className="text-emerald-500/70 text-xs font-bold mt-2">Projected Monthly</p>
-        </div>
-        <div className="bg-surface/30 border border-emerald-500/30 p-6 rounded-2xl relative overflow-hidden shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-          <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl text-emerald-500">💎</div>
-          <p className="text-emerald-400 font-medium text-sm mb-1 uppercase tracking-wider">Annual Recurring (ARR)</p>
-          <h2 className="text-4xl font-black text-white">{format(convert(parseFloat(stats.arr as any) || 0, 'USD', currentCurrency.code), currentCurrency.code)}</h2>
-          <p className="text-emerald-500/70 text-xs font-bold mt-2">Projected Yearly</p>
+          <p className="text-emerald-400 font-medium text-sm mb-1 uppercase tracking-wider">Total MRR</p>
+          <h2 className="text-4xl font-black text-white">{format(convert(parseFloat(overview.kpis?.mrr || 0), 'USD', currentCurrency.code), currentCurrency.code)}</h2>
+          <p className="text-emerald-500/70 text-xs font-bold mt-2">Accurate (Trials Excluded)</p>
         </div>
         <div className="bg-surface/30 border border-border p-6 rounded-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl">💳</div>
-          <p className="text-text-muted font-medium text-sm mb-1">Lifetime Collected</p>
-          <h2 className="text-4xl font-bold text-white">{format(convert(parseFloat(stats.lifetime_revenue as any) || 0, 'BDT', currentCurrency.code), currentCurrency.code)}</h2>
-          <p className="text-success text-xs font-bold mt-2">Live Data</p>
+          <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl">🏢</div>
+          <p className="text-text-muted font-medium text-sm mb-1">Total Tenants</p>
+          <h2 className="text-4xl font-bold text-white">{overview.kpis?.total_tenants || 0}</h2>
+          <p className="text-success text-xs font-bold mt-2">Active & Pending</p>
+        </div>
+        <div className="bg-surface/30 border border-border p-6 rounded-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl">📱</div>
+          <p className="text-text-muted font-medium text-sm mb-1">Active Devices</p>
+          <h2 className="text-4xl font-bold text-white">{overview.kpis?.active_devices || 0}</h2>
+          <p className="text-success text-xs font-bold mt-2">Hardware Linked</p>
+        </div>
+        <div className="bg-surface/30 border border-rose-500/30 p-6 rounded-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl text-rose-500">🛡️</div>
+          <p className="text-rose-400 font-medium text-sm mb-1 uppercase tracking-wider">Failed Logins (24h)</p>
+          <h2 className="text-4xl font-black text-white">{overview.kpis?.failed_logins_24h || 0}</h2>
+          <p className="text-rose-500/70 text-xs font-bold mt-2">Security Events</p>
         </div>
       </div>
 

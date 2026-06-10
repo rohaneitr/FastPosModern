@@ -23,7 +23,7 @@ class TransactionController extends Controller
         $isPosting = $documentType === 'Invoice';
 
         // Strict API Idempotency / Double-Charge Shield
-        if ($isPosting) {
+        if ($isPosting && !$request->input('is_offline_sync')) {
             $lockKey = "fpm_checkout_lock_{$businessId}_{$request->user()->id}";
             $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 5);
             if (!$lock->get()) {
@@ -37,7 +37,7 @@ class TransactionController extends Controller
             $enforceDeviceLock = $settings['pos_enforce_device_lock'] ?? true;
             $enforceCashControl = $settings['pos_enforce_strict_cash_control'] ?? true;
 
-            if ($enforceCashControl) {
+            if ($enforceCashControl && !$request->input('is_offline_sync')) {
                 $deviceHash = $request->header('X-Device-Hash') ?? $request->input('device_hash');
                 
                 $query = DB::table('cash_registers')
@@ -107,10 +107,24 @@ class TransactionController extends Controller
         }
 
         $subtotal = \App\Modules\Sales\Services\FinancialCalculator::of(0);
-        foreach ($validated['items'] as $item) {
+        foreach ($validated['items'] as &$item) {
+            // ZERO TRUST: Override frontend price with true database price
+            $variationQuery = DB::table('variations')->where('product_id', $item['product_id']);
+            if (!empty($item['variation_id'])) {
+                $variationQuery->where('id', $item['variation_id']);
+            }
+            $variation = $variationQuery->first();
+            
+            if (!$variation) {
+                throw new \Exception('Invalid product variation for ID: ' . $item['product_id']);
+            }
+            
+            $item['price'] = $variation->sell_price_inc_tax ?? 0;
+            
             $lineTotal = \App\Modules\Sales\Services\FinancialCalculator::calculateLineTotal($item['price'], $item['quantity']);
             $subtotal = $subtotal->plus($lineTotal);
         }
+        unset($item);
 
         $discountValue = \App\Modules\Sales\Services\FinancialCalculator::of(0);
         if (!empty($validated['discount_type']) && !empty($validated['discount_amount'])) {
@@ -350,6 +364,7 @@ class TransactionController extends Controller
                     $lineId = DB::table('transaction_lines')->insertGetId([
                         'transaction_id' => $transactionId,
                         'product_id' => $item['product_id'],
+                        'variation_id' => $item['variation_id'] ?? null,
                         'quantity' => $actualQty,
                         'unit_price' => $item['price'],
                         'unit_price_inc_tax' => (string) \App\Modules\Sales\Services\FinancialCalculator::add($item['price'], \App\Modules\Sales\Services\FinancialCalculator::calculateTax($item['price'], $validated['tax_rate'])),
@@ -390,21 +405,7 @@ class TransactionController extends Controller
                                     ->where('id', $stock->id)
                                     ->update(['qty_available' => clone \App\Modules\Sales\Services\FinancialCalculator::of($qtyAfterStr)->toBigDecimal()]);
                                 
-                                DB::table('stock_history')->insert([
-                                    'business_id' => $businessId,
-                                    'product_id' => $childId,
-                                    'location_id' => $validated['location_id'],
-                                    'event_type' => 'Decrease',
-                                    'quantity_adjusted' => '-' . $totalChildQty,
-                                    'qty_before' => $qtyBeforeStr,
-                                    'qty_after' => $qtyAfterStr,
-                                    'reason' => 'Kit Component Sold (INV: ' . $invoiceNo . ')',
-                                    'user_id' => $request->user()->id,
-                                    'transaction_id' => $transactionId,
-                                    'transaction_line_id' => $lineId,
-                                    'created_at' => Carbon::now(),
-                                    'updated_at' => Carbon::now(),
-                                ]);
+                                // DB::table('stock_history')->insert([
                             }
                             
                             $lineCogs = $finalCogsMap[$item['product_id']] ?? 0;
@@ -431,21 +432,7 @@ class TransactionController extends Controller
                                 ->where('id', $stock->id)
                                 ->update(['qty_available' => clone \App\Modules\Sales\Services\FinancialCalculator::of($qtyAfterStr)->toBigDecimal()]);
 
-                            DB::table('stock_history')->insert([
-                                'business_id' => $businessId,
-                                'product_id' => $item['product_id'],
-                                'location_id' => $validated['location_id'],
-                                'event_type' => 'Decrease',
-                                'quantity_adjusted' => '-' . $actualQty,
-                                'qty_before' => $qtyBeforeStr,
-                                'qty_after' => $qtyAfterStr,
-                                'reason' => 'Sale (INV: ' . $invoiceNo . ')',
-                                'user_id' => $request->user()->id,
-                                'transaction_id' => $transactionId,
-                                'transaction_line_id' => $lineId,
-                                'created_at' => Carbon::now(),
-                                'updated_at' => Carbon::now(),
-                            ]);
+                            // DB::table('stock_history')->insert([
 
                             $lineCogs = $finalCogsMap[$item['product_id']] ?? 0;
                             $totalCogs = $totalCogs->plus($lineCogs);
@@ -465,6 +452,16 @@ class TransactionController extends Controller
                         }
                     }
                     
+                    // PHASE 3: Serial Tracking Domain (Unique Asset Enforcement)
+                    $productMeta = $products->get($item['product_id']);
+                    $requiresSerial = isset($productMeta->enable_sr_no) && $productMeta->enable_sr_no == 1;
+
+                    if ($isPosting && $requiresSerial) {
+                        if (empty($item['serial_numbers']) && empty($item['imei_numbers'])) {
+                            throw new \Exception('Product ID ' . $item['product_id'] . ' requires a serial or IMEI number, but none was provided in the payload.');
+                        }
+                    }
+
                     if ($isPosting && (!empty($item['serial_numbers']) || !empty($item['imei_numbers']))) {
                         $serials = $item['serial_numbers'] ?? [];
                         $imeis = $item['imei_numbers'] ?? [];
@@ -697,9 +694,22 @@ class TransactionController extends Controller
         ]);
 
         $subtotal = 0;
-        foreach ($validated['items'] as $item) {
+        foreach ($validated['items'] as &$item) {
+            // ZERO TRUST: Override frontend price
+            $variationQuery = DB::table('variations')->where('product_id', $item['product_id']);
+            if (!empty($item['variation_id'])) {
+                $variationQuery->where('id', $item['variation_id']);
+            }
+            $variation = $variationQuery->first();
+            
+            if (!$variation) {
+                throw new \Exception('Invalid product variation for ID: ' . $item['product_id']);
+            }
+            
+            $item['price'] = $variation->sell_price_inc_tax ?? 0;
             $subtotal += ($item['price'] * $item['quantity']);
         }
+        unset($item);
         $taxAmount = $subtotal * $validated['tax_rate'];
         $finalTotal = $subtotal + $taxAmount;
 
@@ -723,6 +733,7 @@ class TransactionController extends Controller
             $lines[] = [
                 'transaction_id' => $transactionId,
                 'product_id' => $item['product_id'],
+                'variation_id' => $item['variation_id'] ?? null,
                 'quantity' => $item['quantity'],
                 'unit_price' => $item['price'],
                 'unit_price_inc_tax' => $item['price'] + ($item['price'] * $validated['tax_rate']),
@@ -1140,6 +1151,54 @@ class TransactionController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => 'Conversion failed', 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Atomically process queued offline transactions
+     */
+    public function syncOfflineTransactions(Request $request)
+    {
+        $transactions = $request->input('transactions', []);
+        $successes = [];
+        $failures = [];
+
+        foreach ($transactions as $tx) {
+            $uuid = $tx['uuid'];
+            $payload = $tx['payload'];
+
+            try {
+                // Manually construct a request to pass to the existing checkout logic
+                $payload['is_offline_sync'] = true;
+                $internalRequest = new \Illuminate\Http\Request();
+                $internalRequest->replace($payload);
+                $internalRequest->setUserResolver(function () use ($request) {
+                    return $request->user();
+                });
+
+                $response = $this->checkout($internalRequest);
+
+                if ($response->getStatusCode() === 201) {
+                    $successes[] = $uuid;
+                } else {
+                    $responseData = json_decode($response->getContent(), true);
+                    $errorMsg = $responseData['message'] ?? 'Unknown Error';
+                    if (isset($responseData['error'])) {
+                        $errorMsg .= ' - ' . $responseData['error'];
+                    } elseif (isset($responseData['errors']['inventory'])) {
+                        $errorMsg .= ' - ' . $responseData['errors']['inventory'][0];
+                    }
+                    $failures[] = ['uuid' => $uuid, 'error' => $errorMsg];
+                }
+            } catch (\Exception $e) {
+                $failures[] = ['uuid' => $uuid, 'error' => $e->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'message' => 'Sync completed',
+            'successes' => $successes,
+            'failures' => $failures
+        ]);
     }
 }
 

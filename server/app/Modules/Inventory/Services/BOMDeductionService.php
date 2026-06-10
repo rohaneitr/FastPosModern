@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Services;
 use App\Modules\Inventory\Actions\ConsumeBatchFIFOInventoryAction;
 use Illuminate\Support\Facades\DB;
 use Exception;
+use Brick\Math\BigDecimal;
 
 class BOMDeductionService
 {
@@ -27,14 +28,19 @@ class BOMDeductionService
         });
     }
 
-    private function recurseAndDeduct(int $businessId, int $productId, $quantity, string $reference): string
+    private function recurseAndDeduct(int $businessId, int $productId, $quantity, string $reference, array $visitedPaths = []): string
     {
+        if (in_array($productId, $visitedPaths)) {
+            $path = implode(' -> ', $visitedPaths) . " -> {$productId}";
+            throw new Exception("Circular dependency detected in BOM: {$path}");
+        }
+        $visitedPaths[] = $productId;
         $product = DB::table('products')->where('id', $productId)->first();
         if (!$product) {
             throw new Exception("Product ID {$productId} not found.");
         }
 
-        $totalCogs = '0.0000';
+        $totalCogs = BigDecimal::zero();
 
         if ($product->type === 'composite') {
             // Fetch Bill of Materials (BOM)
@@ -46,16 +52,18 @@ class BOMDeductionService
                 throw new Exception("Composite product {$product->name} has no BOM defined.");
             }
 
+            $bdQuantity = BigDecimal::of($quantity);
+
             foreach ($assemblies as $assembly) {
-                // Calculate required quantity for this child item recursively
-                // Using generic float multiplication since Brick\Math might be overkill for simple multipliers here, 
-                // but for enterprise precision we can use bcmul.
-                $requiredQty = bcmul((string)$quantity, (string)$assembly->quantity, 4);
+                // PHASE 2: Precise fractional multiplication using BigDecimal
+                $bdAssemblyQty = BigDecimal::of($assembly->quantity);
+                $requiredQty = $bdQuantity->multipliedBy($bdAssemblyQty)->toScale(4)->__toString();
                 
                 // Recurse into child
-                $childCogs = $this->recurseAndDeduct($businessId, $assembly->child_product_id, $requiredQty, $reference);
-                $totalCogs = bcadd($totalCogs, $childCogs, 4);
+                $childCogs = $this->recurseAndDeduct($businessId, $assembly->child_product_id, $requiredQty, $reference, $visitedPaths);
+                $totalCogs = $totalCogs->plus(BigDecimal::of($childCogs));
             }
+            return $totalCogs->toScale(4)->__toString();
         } else {
             // Standard product or raw material -> Deduct via FEFO/FIFO Engine
             

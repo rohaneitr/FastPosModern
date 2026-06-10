@@ -31,8 +31,10 @@ class TenantDeletionService
 
         DB::transaction(function () use ($businessId, &$summary) {
             // ─── 1. Device / License layer (no dependencies below) ───────────
-            $summary['device_activations'] = \Illuminate\Support\Facades\Schema::hasTable('device_activations') 
-                ? DB::table('device_activations')->where('business_id', $businessId)->delete() 
+            $summary['user_devices'] = \Illuminate\Support\Facades\Schema::hasTable('user_devices') 
+                ? DB::table('user_devices')->whereIn('user_id', function($q) use ($businessId) {
+                    $q->select('id')->from('users')->where('business_id', $businessId);
+                })->delete() 
                 : 0;
 
             $summary['licenses'] = \Illuminate\Support\Facades\Schema::hasTable('licenses')

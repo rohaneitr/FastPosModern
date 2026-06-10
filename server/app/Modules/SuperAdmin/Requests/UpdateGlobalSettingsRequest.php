@@ -28,6 +28,10 @@ class UpdateGlobalSettingsRequest extends FormRequest
             'smtp_username' => 'nullable|string|max:255',
             'smtp_password' => 'nullable|string|max:255',
             'smtp_encryption' => 'nullable|in:tls,ssl,none',
+
+            // Feature Flags
+            'enable_registration' => 'nullable|boolean',
+            'maintenance_mode' => 'nullable|boolean',
         ];
     }
 }
