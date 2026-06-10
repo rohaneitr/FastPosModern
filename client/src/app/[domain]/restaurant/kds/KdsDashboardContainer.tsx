@@ -69,7 +69,6 @@ export const KdsDashboardContainer: React.FC<KdsDashboardProps> = ({ initialTick
             setTickets(res.data.data || res.data);
             setIsOffline(false);
         } catch (error) {
-            console.error('KDS Sync failed:', error);
         }
     }, []);
 
@@ -128,7 +127,6 @@ export const KdsDashboardContainer: React.FC<KdsDashboardProps> = ({ initialTick
             const audio = new Audio('/assets/sounds/kitchen-alert.mp3');
             audio.play().catch(e => console.warn('Audio play blocked by browser policy:', e));
         } catch (error) {
-            console.error('Failed to play audio:', error);
         }
     }, []);
 
@@ -146,7 +144,6 @@ export const KdsDashboardContainer: React.FC<KdsDashboardProps> = ({ initialTick
             //     body: JSON.stringify({ status: newStatus })
             // });
         } catch (error) {
-            console.error('Failed to update status:', error);
             // Revert on failure (omitted for brevity)
         }
     };

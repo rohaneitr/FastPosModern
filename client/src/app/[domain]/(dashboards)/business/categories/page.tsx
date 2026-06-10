@@ -73,7 +73,6 @@ export default function CatalogSettingsPage() {
       else if (tab === 'brands') setBrands(data || []);
       else if (tab === 'units') setUnits(data || []);
     } catch (error) {
-      console.error(`Failed to fetch ${tab}`, error);
     } finally {
       setIsLoading(false);
     }
@@ -144,7 +143,6 @@ export default function CatalogSettingsPage() {
       setIsModalOpen(false);
       fetchData(activeTab, searchQuery);
     } catch (error: any) {
-      console.error(`Failed to save ${activeTab}`, error);
       alert(error.response?.data?.message || 'An error occurred while saving.');
     } finally {
       setIsSubmitting(false);
@@ -158,7 +156,6 @@ export default function CatalogSettingsPage() {
       await api.delete(`/${activeTab}/${id}`);
       fetchData(activeTab, searchQuery);
     } catch (error: any) {
-      console.error(`Failed to delete ${activeTab}`, error);
       if (error.response?.status === 400) {
         alert(error.response.data.message || 'Cannot delete this item because it is linked to existing products.');
       } else {

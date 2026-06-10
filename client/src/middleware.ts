@@ -25,9 +25,6 @@ export function middleware(req: NextRequest) {
   // Removes port number if it exists (e.g., localhost:3000 -> localhost)
   const hostHeader = req.headers.get('host') || '';
   const hostname = hostHeader.split(':')[0]; 
-
-  console.log('=> MIDDLEWARE EXECUTING FOR HOST:', hostname);
-
   // 3. Define Root Domains
   const envRootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'fastpos.com';
   
@@ -48,7 +45,6 @@ export function middleware(req: NextRequest) {
 
     if (url.pathname === '/login' || url.pathname === '/superadmin/login') {
       url.pathname = '/superadmin-login';
-      console.log('=> ROOT REWRITE TO:', url.pathname);
       return NextResponse.rewrite(url);
     }
     
@@ -66,13 +62,11 @@ export function middleware(req: NextRequest) {
 
       // If no session cookie exists at all, eject immediately
       if (!sessionCookie) {
-        console.log('=> EDGE SHIELD: No session token. Redirecting to login.');
         return NextResponse.redirect(new URL('/superadmin-login', req.url));
       }
 
       // If the role cookie exists and is NOT SuperAdmin, block with redirect
       if (userCookie && userCookie !== 'SuperAdmin') {
-        console.log('=> EDGE SHIELD: Non-SuperAdmin role detected. Ejecting.');
         return NextResponse.redirect(new URL('/superadmin-login?reason=forbidden', req.url));
       }
     }
@@ -95,12 +89,22 @@ export function middleware(req: NextRequest) {
 
   if (isTenantDashboardRoute) {
     const sessionCookie = req.cookies.get('fastpos_session')?.value;
+    const roleCookie = req.cookies.get('fastpos_user_role')?.value;
     
     if (!sessionCookie) {
-      console.log('=> TENANT EDGE SHIELD: No session token. Redirecting to login.');
       return NextResponse.redirect(new URL('/login', req.url));
     }
-    // Note: We intentionally do NOT check for 'SuperAdmin' role here.
+    
+    // Check SaaS Billing Status (Iron Gate)
+    const businessStatus = req.cookies.get('fastpos_business_status')?.value;
+    if (businessStatus === 'suspended' && !url.pathname.includes('/billing/suspended') && !url.pathname.startsWith('/api')) {
+      return NextResponse.redirect(new URL('/business/billing/suspended', req.url));
+    }
+    
+    // Block cashiers from accessing backoffice routes
+    if (roleCookie === 'Cashier' && url.pathname.startsWith('/business')) {
+      return NextResponse.redirect(new URL('/terminal', req.url));
+    }
   }
 
   // 6. Extract Tenant Domain Strictly
@@ -116,8 +120,5 @@ export function middleware(req: NextRequest) {
   // 7. Execute the Rewrite!
   // Example: tenant1.localhost:3000/login -> /tenant1/login
   url.pathname = `/${tenantDomain}${url.pathname}`;
-
-  console.log('=> REWRITING TO:', url.pathname);
-
   return NextResponse.rewrite(url);
 }

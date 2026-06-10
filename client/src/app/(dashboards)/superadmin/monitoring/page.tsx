@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import toast from 'react-hot-toast';
 
 export default function SuperadminMonitoring() {
   const [metrics, setMetrics] = useState<any[]>([]);
@@ -18,8 +19,8 @@ export default function SuperadminMonitoring() {
       const res = await api.get('/superadmin/monitoring');
       setMetrics(res.data.metrics || []);
       setEvents(res.data.events || []);
-    } catch (err) {
-      console.error('Failed to fetch monitoring data', err);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to fetch monitoring data');
     } finally {
       setLoading(false);
     }

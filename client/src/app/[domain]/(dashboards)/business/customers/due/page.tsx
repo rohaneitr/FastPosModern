@@ -33,7 +33,6 @@ export default function DueCollectionPage() {
       const total = res.data.reduce((sum: number, c: any) => sum + parseFloat(c.total_due), 0);
       setTotalReceivable(total);
     } catch (err) {
-      console.error(err);
     } finally {
       setLoading(false);
     }

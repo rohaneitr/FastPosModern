@@ -45,7 +45,6 @@ export default function UserManagementPage() {
         setPermissions(permRes.data);
       }
     } catch (err) {
-      console.warn(`Failed to fetch ${activeTab}`, err);
       if (activeTab === 'users') setUsers([]);
       else {
         setRoles([]);

@@ -22,6 +22,23 @@ class TransactionController extends Controller
         $documentType = $request->input('document_type', $request->input('save_as_quotation') ? 'Quotation' : 'Invoice');
         $isPosting = $documentType === 'Invoice';
 
+        $idempotencyKey = $request->header('X-Idempotency-Key');
+
+        if ($isPosting && $idempotencyKey) {
+            $existingTx = DB::table('transactions')
+                ->where('idempotency_key', $idempotencyKey)
+                ->where('business_id', $businessId)
+                ->first();
+                
+            if ($existingTx) {
+                return response()->json([
+                    'message' => 'Idempotent request. Sale already processed successfully.',
+                    'transaction_id' => $existingTx->id,
+                    'invoice_no' => $existingTx->invoice_no,
+                ], 200);
+            }
+        }
+
         // Strict API Idempotency / Double-Charge Shield
         if ($isPosting && !$request->input('is_offline_sync')) {
             $lockKey = "fpm_checkout_lock_{$businessId}_{$request->user()->id}";
@@ -31,13 +48,14 @@ class TransactionController extends Controller
             }
         }
 
+        $activeSessionId = null;
+
         if ($isPosting) {
             $business = DB::table('businesses')->where('id', $businessId)->first();
             $settings = $business->settings ? json_decode($business->settings, true) : [];
             $enforceDeviceLock = $settings['pos_enforce_device_lock'] ?? true;
-            $enforceCashControl = $settings['pos_enforce_strict_cash_control'] ?? true;
 
-            if ($enforceCashControl && !$request->input('is_offline_sync')) {
+            if (!$request->input('is_offline_sync')) {
                 $deviceHash = $request->header('X-Device-Hash') ?? $request->input('device_hash');
                 
                 $query = DB::table('cash_registers')
@@ -56,6 +74,8 @@ class TransactionController extends Controller
                         : 'FPM Security: POS checkout blocked. Cash register drawer is closed or currently suspending.';
                     return response()->json(['message' => $msg], 422);
                 }
+                
+                $activeSessionId = $activeSession->id;
             }
         }
 
@@ -148,7 +168,7 @@ class TransactionController extends Controller
         $amountDue = \App\Modules\Sales\Services\FinancialCalculator::applyDiscount($finalTotal, $amountPaid);
 
         try {
-            $result = DB::transaction(function () use ($validated, $businessId, $request, $isPosting, $documentType, $invoiceNo, $amountPaid, $amountDue, $subtotal, $discountValue, $taxAmount, $finalTotal, $rxRequiredCount) {
+            $result = DB::transaction(function () use ($validated, $businessId, $request, $isPosting, $documentType, $invoiceNo, $amountPaid, $amountDue, $subtotal, $discountValue, $taxAmount, $finalTotal, $rxRequiredCount, $activeSessionId) {
                 if ($isPosting && $amountDue->isGreaterThan(0.01) && empty($validated['contact_id'])) {
                     throw new \Exception('Customer MUST be selected for credit sales / dues.');
                 }
@@ -216,6 +236,8 @@ class TransactionController extends Controller
                     'discount_amount' => (string) $discountValue,
                     'discount_type' => $validated['discount_type'] ?? null,
                     'final_total' => (string) $finalTotal,
+                    'cash_register_id' => $activeSessionId,
+                    'idempotency_key' => $idempotencyKey,
                     'created_at' => Carbon::now(),
                     'updated_at' => Carbon::now(),
                 ];

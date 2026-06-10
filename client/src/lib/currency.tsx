@@ -241,7 +241,6 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (error) {
-      console.warn('Failed to fetch exchange rates, using cached values.', error);
     }
   }, []);
 

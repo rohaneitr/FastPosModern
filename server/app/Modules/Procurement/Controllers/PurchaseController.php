@@ -14,6 +14,146 @@ use Illuminate\Support\Str;
 
 class PurchaseController extends Controller
 {
+    /**
+     * Receive a Purchase Order and update Weighted Average Cost (WAC)
+     */
+    public function receive(\Illuminate\Http\Request $request)
+    {
+        $businessId = $request->user()->business_id;
+
+        $validated = $request->validate([
+            'supplier_id' => ['required', \Illuminate\Validation\Rule::exists('contacts', 'id')->where('business_id', $businessId)],
+            'location_id' => ['required', \Illuminate\Validation\Rule::exists('locations', 'id')->where('business_id', $businessId)],
+            'reference_no' => 'required|string|max:255',
+            'lines' => 'required|array|min:1',
+            'lines.*.product_id' => ['required', \Illuminate\Validation\Rule::exists('products', 'id')->where('business_id', $businessId)],
+            'lines.*.variation_id' => 'nullable|integer',
+            'lines.*.quantity' => 'required|numeric|min:0.0001',
+            'lines.*.unit_cost' => 'required|numeric|min:0',
+        ]);
+
+        $subtotal = 0;
+        foreach ($validated['lines'] as $line) {
+            $subtotal += ($line['quantity'] * $line['unit_cost']);
+        }
+
+        try {
+            return DB::transaction(function () use ($validated, $businessId, $request, $subtotal) {
+
+                $transactionId = DB::table('transactions')->insertGetId([
+                    'business_id' => $businessId,
+                    'location_id' => $validated['location_id'],
+                    'contact_id' => $validated['supplier_id'],
+                    'created_by' => $request->user()->id,
+                    'type' => 'purchase',
+                    'status' => 'received',
+                    'invoice_no' => $validated['reference_no'],
+                    'transaction_date' => \Carbon\Carbon::now(),
+                    'total_before_tax' => $subtotal,
+                    'final_total' => $subtotal,
+                    'created_at' => \Carbon\Carbon::now(),
+                    'updated_at' => \Carbon\Carbon::now(),
+                ]);
+
+                // We MUST sort product_ids to prevent deadlocks when locking multiple rows
+                $sortedLines = $validated['lines'];
+                usort($sortedLines, fn($a, $b) => $a['product_id'] <=> $b['product_id']);
+
+                foreach ($sortedLines as $line) {
+                    $productId = $line['product_id'];
+                    $quantity = (float) $line['quantity'];
+                    $newUnitCost = (float) $line['unit_cost'];
+
+                    // 1. Pessimistic Lock on Inventory Row
+                    $stock = DB::table('product_stocks')
+                        ->where('product_id', $productId)
+                        ->where('location_id', $validated['location_id'])
+                        ->lockForUpdate()
+                        ->first();
+
+                    $oldQty = $stock ? (float) $stock->qty_available : 0.0;
+
+                    // 2. Fetch Old MAC (from variations or products)
+                    $variationQuery = DB::table('variations')->where('product_id', $productId);
+                    if (!empty($line['variation_id'])) {
+                        $variationQuery->where('id', $line['variation_id']);
+                    }
+                    $variation = $variationQuery->first();
+                    
+                    // Fallback to product if variation doesn't have it
+                    $product = DB::table('products')->where('id', $productId)->first();
+                    $oldMac = $variation ? (float) ($variation->default_purchase_price ?? 0) : (float) ($product->purchase_price ?? 0);
+
+                    // 3. WAC Math Formula
+                    $newTotalQty = $oldQty + $quantity;
+                    $newMac = 0.0;
+
+                    if ($newTotalQty > 0) {
+                        $oldValue = $oldQty * $oldMac;
+                        $newValue = $quantity * $newUnitCost;
+                        $newMac = ($oldValue + $newValue) / $newTotalQty;
+                    } else {
+                        $newMac = $newUnitCost;
+                    }
+
+                    // 4. Update Inventory Quantity
+                    if ($stock) {
+                        DB::table('product_stocks')
+                            ->where('id', $stock->id)
+                            ->update(['qty_available' => $newTotalQty, 'updated_at' => \Carbon\Carbon::now()]);
+                    } else {
+                        DB::table('product_stocks')->insert([
+                            'business_id' => $businessId,
+                            'location_id' => $validated['location_id'],
+                            'product_id' => $productId,
+                            'qty_available' => $newTotalQty,
+                            'created_at' => \Carbon\Carbon::now(),
+                            'updated_at' => \Carbon\Carbon::now(),
+                        ]);
+                    }
+
+                    // 5. Update Cost Baseline (The MAC)
+                    if ($variation) {
+                        DB::table('variations')
+                            ->where('id', $variation->id)
+                            ->update(['default_purchase_price' => clone \Brick\Math\BigDecimal::of($newMac)->toScale(4)->__toString()]);
+                    }
+                    
+                    DB::table('products')
+                        ->where('id', $productId)
+                        ->update(['purchase_price' => clone \Brick\Math\BigDecimal::of($newMac)->toScale(4)->__toString()]);
+
+                    // 6. Double-Entry Audit Trail
+                    DB::table('stock_ledgers')->insert([
+                        'business_id' => $businessId,
+                        'product_id' => $productId,
+                        'transaction_type' => 'purchase',
+                        'quantity' => $quantity,
+                        'created_at' => \Carbon\Carbon::now(),
+                        'updated_at' => \Carbon\Carbon::now(),
+                    ]);
+
+                    // Insert into transaction_lines
+                    DB::table('transaction_lines')->insert([
+                        'transaction_id' => $transactionId,
+                        'product_id' => $productId,
+                        'variation_id' => $line['variation_id'] ?? null,
+                        'quantity' => $quantity,
+                        'unit_price' => $newUnitCost,
+                        'created_at' => \Carbon\Carbon::now(),
+                        'updated_at' => \Carbon\Carbon::now(),
+                    ]);
+                }
+
+                return response()->json([
+                    'message' => 'Purchase received successfully. WAC updated.',
+                    'transaction_id' => $transactionId
+                ], 201);
+            });
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Failed to process purchase.', 'error' => $e->getMessage()], 500);
+        }
+    }
     public function index()
     {
         try {

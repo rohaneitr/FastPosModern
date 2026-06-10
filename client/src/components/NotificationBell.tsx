@@ -37,7 +37,6 @@ export default function NotificationBell() {
         setNotifications(res.data.data);
       }
     } catch (e) {
-      console.warn('Failed to fetch notifications', e);
     }
   };
 
@@ -48,7 +47,6 @@ export default function NotificationBell() {
       await api.put(`/notifications/${id}/read`);
       playTaskSuccess();
     } catch (e) {
-      console.warn('Failed to mark read', e);
       // Re-fetch to sync state on failure
       fetchNotifications();
     }
@@ -60,7 +58,6 @@ export default function NotificationBell() {
       await api.put('/notifications/read-all');
       playTaskSuccess();
     } catch (e) {
-      console.warn('Failed to mark all read', e);
       fetchNotifications();
     }
   };

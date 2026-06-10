@@ -94,7 +94,6 @@ export default function ProductsPage() {
         setProducts(data || []);
       }
     } catch (error) {
-      console.error('Failed to fetch products', error);
     } finally {
       setIsLoading(false);
     }
@@ -112,7 +111,6 @@ export default function ProductsPage() {
       setBrands(brandRes.data?.data || []);
       setUnits(unitRes.data?.data || []);
     } catch (error) {
-      console.error('Failed to fetch dependencies', error);
     }
   };
 
@@ -154,7 +152,6 @@ export default function ProductsPage() {
       });
       fetchProducts(searchQuery, 1);
     } catch (error: any) {
-      console.error('Failed to save product', error);
       const errorMessage = error.response?.data?.message || 'Failed to save product. Please check your inputs.';
       alert(errorMessage);
     } finally {

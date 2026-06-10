@@ -19,7 +19,6 @@ export default function ApiKeysPage() {
       const res = await api.get('/api-keys');
       setTokens(res.data);
     } catch (err) {
-      console.error(err);
     } finally {
       setLoading(false);
     }

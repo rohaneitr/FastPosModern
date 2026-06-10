@@ -32,7 +32,6 @@ export default function PayrollGeneratorPage() {
       if (payRes.data) setPayrolls(payRes.data);
       if (empRes.data) setEmployees(empRes.data);
     } catch (e) {
-      console.error(e);
     } finally {
       setLoading(false);
     }

@@ -34,7 +34,6 @@ export default function ForgotPasswordPage() {
            });
         })
         .catch(err => {
-           console.error("Failed to load tenant branding", err);
         });
     }
   }, [domain]);

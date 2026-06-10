@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
 import { useCurrency } from '@/lib/currency';
+import toast from 'react-hot-toast';
 
 export default function SuperadminOverview() {
   const { t } = useTranslation();
@@ -21,8 +22,8 @@ export default function SuperadminOverview() {
         ]);
         setStats(statsRes.data);
         setOverview(overviewRes.data);
-      } catch (error) {
-        console.error('Failed to load overview stats', error);
+      } catch (error: any) {
+        toast.error(error.response?.data?.message || 'Failed to load overview stats');
       } finally {
         setLoading(false);
       }

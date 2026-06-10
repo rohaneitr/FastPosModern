@@ -30,7 +30,6 @@ export default function WarrantyRMAPage() {
       const res = await api.get('/rma');
       setTickets(res.data);
     } catch (e) {
-      console.error(e);
     }
   };
 

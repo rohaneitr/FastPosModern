@@ -12,7 +12,6 @@ class SyncManagerService {
   public initAutoSync() {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
-        console.log('[SyncManager] Connection restored. Triggering sync...');
         this.sync();
       });
 
@@ -41,7 +40,6 @@ class SyncManagerService {
       // 2. Pull server changes
       await this.pull();
     } catch (error) {
-      console.error('[SyncManager] Sync failed:', error);
     } finally {
       this.isSyncing = false;
     }
@@ -84,10 +82,8 @@ class SyncManagerService {
 
         // Update the last sync timestamp
         localStorage.setItem(this.SYNC_KEY, timestamp);
-        console.log(`[SyncManager] Pull sync completed. Updated ${Object.values(incomingData).flat().length} records.`);
       }
     } catch (error) {
-      console.error('[SyncManager] Pull sync failed:', error);
       throw error;
     }
   }
@@ -134,16 +130,12 @@ class SyncManagerService {
             
             for (const conflict of entityConflicts) {
               const serverRecord = conflict.server_record;
-              console.warn(`[SyncManager] Conflict resolved (Server Wins) for ${entity} #${serverRecord.id}`);
               await table.put({ ...serverRecord, sync_status: 'synced' });
             }
           }
         });
-
-        console.log('[SyncManager] Push sync completed.');
       }
     } catch (error) {
-      console.error('[SyncManager] Push sync failed:', error);
       throw error;
     }
   }

@@ -33,7 +33,7 @@ export default function BusinessDashboard() {
         setTimeout(() => setEodData(null), 500);
       }, 500);
     } catch (err) {
-      console.error(err);
+
       alert('Failed to load EOD Report');
     } finally {
       setPrintingEod(false);

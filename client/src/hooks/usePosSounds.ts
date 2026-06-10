@@ -7,10 +7,8 @@ export function usePosSounds() {
       audio.volume = 0.5;
       audio.play().catch(e => {
         // Autoplay policy or other error
-        console.warn('Audio playback failed:', e);
       });
     } catch (err) {
-      console.warn('Audio not supported:', err);
     }
   };
 

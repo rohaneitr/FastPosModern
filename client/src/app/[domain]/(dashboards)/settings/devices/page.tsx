@@ -28,7 +28,6 @@ export default function DevicesPage() {
       const res = await api.get('/devices');
       if (res.data) setDevices(res.data);
     } catch (err) {
-      console.warn('Failed to fetch devices', err);
     } finally {
       setLoading(false);
     }
@@ -45,7 +44,6 @@ export default function DevicesPage() {
     try {
       await api.put(`/devices/${targetId}/block`);
     } catch (err) {
-      console.error(err);
       fetchDevices(); // revert on failure
     }
   };
@@ -59,7 +57,6 @@ export default function DevicesPage() {
     try {
       await api.delete(`/devices/${id}`);
     } catch (err) {
-      console.error(err);
       fetchDevices(); // revert
     }
   };

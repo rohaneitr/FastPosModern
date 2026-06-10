@@ -37,6 +37,22 @@ class AuditLogger
             return;
         }
 
+        $lastLog = AuditLog::orderBy('id', 'desc')->first();
+        $previousChecksum = $lastLog ? $lastLog->checksum : null;
+
+        $payload = json_encode([
+            'business_id' => $businessId,
+            'user_id' => $user ? $user->id : null,
+            'event' => $event,
+            'auditable_type' => $type,
+            'auditable_id' => $id,
+            'old_values' => empty($old) ? null : $old,
+            'new_values' => empty($new) ? null : $new,
+            'previous_checksum' => $previousChecksum
+        ]);
+
+        $checksum = hash('sha256', $payload);
+
         AuditLog::create([
             'business_id' => $businessId,
             'user_id' => $user ? $user->id : null,
@@ -48,6 +64,7 @@ class AuditLogger
             'new_values' => empty($new) ? null : $new,
             'ip_address' => Request::ip(),
             'user_agent' => Request::userAgent(),
+            'checksum' => $checksum,
             'created_at' => now(),
         ]);
     }

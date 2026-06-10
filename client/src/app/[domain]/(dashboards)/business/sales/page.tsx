@@ -87,7 +87,6 @@ export default function SalesHubPage() {
           revenue: statsRes.data.total_revenue || 0,
         });
       } catch (statsErr) {
-        console.warn("Could not load global stats", statsErr);
       }
     } catch {
       setSales([]);

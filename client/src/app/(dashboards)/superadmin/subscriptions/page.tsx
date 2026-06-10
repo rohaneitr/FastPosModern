@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import toast from 'react-hot-toast';
+import useSWR from 'swr';
+
+const fetcher = (url: string) => api.get(url).then(res => Array.isArray(res.data) ? res.data : []);
 
 // MODULE_CATEGORIES will be populated dynamically
 type ModuleCategory = {
@@ -25,8 +28,8 @@ const defaultForm = { name: '', price: '0', interval: 'month', max_users: '1', m
 
 export default function SuperadminSubscriptions() {
   const { format, currentCurrency, convert } = useCurrency();
-  const [plans, setPlans] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: swrPlans, mutate: mutatePlans, isLoading: loading } = useSWR('/superadmin/plans', fetcher);
+  const plans = swrPlans || [];
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<number | null>(null);
@@ -36,7 +39,6 @@ export default function SuperadminSubscriptions() {
   const [moduleCategories, setModuleCategories] = useState<ModuleCategory[]>([]);
 
   useEffect(() => { 
-    fetchPlans();
     fetchModules();
   }, []);
 
@@ -73,18 +75,11 @@ export default function SuperadminSubscriptions() {
 
       setModuleCategories(Object.values(cats).filter(c => c.modules.length > 0));
     } catch (e) {
-      console.error('Failed to fetch modules', e);
+      toast.error('Failed to fetch modules');
     }
   };
 
-  const fetchPlans = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/superadmin/plans');
-      setPlans(Array.isArray(res.data) ? res.data : []);
-    } catch { setPlans([]); }
-    finally { setLoading(false); }
-  };
+
 
   const handleEdit = (plan: any) => {
     let parsedModules = ['pos', 'inventory'];
@@ -99,12 +94,13 @@ export default function SuperadminSubscriptions() {
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this plan? Blocked if active tenants exist.')) return;
     const backup = [...plans];
-    setPlans(plans.filter(p => p.id !== id)); // Optimistic UI
+    mutatePlans(plans.filter((p: any) => p.id !== id), false); // Optimistic UI
     try { 
       await api.delete(`/superadmin/plans/${id}`); 
+      mutatePlans();
       toast.success('Plan deleted successfully'); 
     } catch (error: any) { 
-      setPlans(backup); // Rollback
+      mutatePlans(backup, false); // Rollback
       toast.error(error.response?.data?.message || 'Failed to delete'); 
     }
   };
@@ -145,9 +141,9 @@ export default function SuperadminSubscriptions() {
       const cfg = { withCredentials: true, headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fastpos_token') || ''}` } };
       if (editingPlanId) { await api.put(`/superadmin/plans/${editingPlanId}`, payload, cfg); toast.success('Plan updated successfully'); }
       else { await api.post('/superadmin/plans', payload, cfg); toast.success('Plan created successfully'); }
-      setShowModal(false); setEditingPlanId(null); setForm({...defaultForm}); fetchPlans();
+      setShowModal(false); setEditingPlanId(null); setForm({...defaultForm}); mutatePlans();
     } catch (error: any) {
-      console.error('API Error:', error.response ? error.response.data : error.message);
+
       if (error.response?.data?.errors) {
         setErrors(error.response.data.errors);
         toast.error('Please correct the highlighted form errors');

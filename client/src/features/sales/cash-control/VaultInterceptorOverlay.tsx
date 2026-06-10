@@ -14,7 +14,6 @@ export function VaultInterceptorOverlay() {
             await cashControlApi.openRegisterSession(balance || '0');
             await refreshStatus();
         } catch (error) {
-            console.error('Failed to open session', error);
             setIsSubmitting(false);
         }
     };

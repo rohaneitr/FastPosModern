@@ -220,8 +220,10 @@ class ReportController extends Controller
             'startDate' => Carbon::parse($startDate)->format('M d, Y'),
             'endDate' => Carbon::parse($endDate)->format('M d, Y'),
             'businessName' => $businessName,
-            'generatedAt' => now()->format('M d, Y H:i:s'),
         ]);
+
+        return $pdf->download('sales_report.pdf');
+    }
 
     /**
      * Get Inventory Valuation Report

@@ -33,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'module' => \App\Http\Middleware\EnforceTenantModuleAccess::class,
             'module.access' => \App\Http\Middleware\CheckModuleAccess::class,
             'entitlement' => \App\Http\Middleware\EntitlementMiddleware::class,
+            'hardware_lock' => \App\Http\Middleware\VerifyHardwareHash::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

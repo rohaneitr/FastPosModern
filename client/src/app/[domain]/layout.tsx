@@ -37,7 +37,6 @@ async function getTenantConfig(domain: string): Promise<TenantConfig | null> {
     if (err.message === 'Tenant is suspended or inactive') {
       throw err;
     }
-    console.error('Failed to resolve tenant:', err);
     return null;
   }
 }

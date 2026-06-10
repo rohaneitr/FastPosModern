@@ -58,7 +58,6 @@ export default function InvoiceDesignerPage() {
         }
       }
     } catch (e) {
-      console.error(e);
     } finally {
       setLoading(false);
     }

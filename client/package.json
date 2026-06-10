@@ -11,12 +11,16 @@
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
+    "@hookform/resolvers": "^5.4.0",
     "@rolldown/pluginutils": "^1.0.1",
+    "@types/uuid": "^10.0.0",
     "axios": "^1.16.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "decimal.js": "^10.6.0",
     "dexie": "^4.4.3",
     "dexie-react-hooks": "^4.4.0",
+    "idb-keyval": "^6.2.5",
     "is-module": "^1.0.0",
     "lodash.debounce": "^4.0.8",
     "lucide-react": "^1.17.0",
@@ -24,6 +28,7 @@
     "randombytes": "^2.1.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-hook-form": "^7.78.0",
     "react-hot-toast": "^2.6.0",
     "recharts": "^3.8.1",
     "rolldown": "^1.1.0",
@@ -32,6 +37,8 @@
     "tailwind-merge": "^3.6.0",
     "tinyexec": "^1.2.4",
     "upath": "^3.0.7",
+    "uuid": "^14.0.0",
+    "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

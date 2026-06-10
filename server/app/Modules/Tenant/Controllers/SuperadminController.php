@@ -437,6 +437,27 @@ class SuperadminController extends Controller
         return response()->json(['metrics' => $metrics, 'events' => $events]);
     }
 
+    public function metrics(Request $request)
+    {
+        return $this->overviewStats($request);
+    }
+
+    public function settings(Request $request)
+    {
+        if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403, 'Unauthorized'); }
+        
+        $smtpPassword = config('mail.mailers.smtp.password');
+        
+        return response()->json([
+            'smtp' => [
+                'host' => config('mail.mailers.smtp.host'),
+                'port' => config('mail.mailers.smtp.port'),
+                'username' => config('mail.mailers.smtp.username'),
+                'password' => $smtpPassword ? '********' : null,
+            ]
+        ]);
+    }
+
     public function overviewStats(Request $request)
     {
         if (!$request->user() || !$request->user()->hasRole('SuperAdmin')) { abort(403, 'Unauthorized'); }

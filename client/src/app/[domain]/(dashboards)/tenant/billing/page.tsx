@@ -26,7 +26,6 @@ export default function TenantBillingPage() {
       setPlans(Array.isArray(plansRes.data) ? plansRes.data : []);
       setCurrentSub(subRes.data.subscription);
     } catch (err) {
-      console.error(err);
     } finally {
       setLoading(false);
     }

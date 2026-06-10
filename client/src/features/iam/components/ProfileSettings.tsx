@@ -56,7 +56,7 @@ export default function ProfileSettings({ role }: ProfileSettingsProps) {
       setTwoFactorEnabled(res.data.two_factor_enabled || false);
       setLoading(false);
     } catch (err) {
-      console.error(err);
+
       setLoading(false);
     }
   };
@@ -66,7 +66,7 @@ export default function ProfileSettings({ role }: ProfileSettingsProps) {
       const res = await api.get('/profile/activities');
       setActivities(res.data);
     } catch (err) {
-      console.error(err);
+
     }
   };
 

@@ -56,7 +56,6 @@ export default function TenantSettingsHub() {
           });
         }
       } catch (err) {
-        console.error('Failed to fetch settings', err);
       }
     };
     fetchSettings();

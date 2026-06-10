@@ -29,7 +29,6 @@ export const ImportDashboard: React.FC = () => {
                         }
                     }
                 } catch (error) {
-                    console.error("Polling error", error);
                 }
             }, 1000);
         }

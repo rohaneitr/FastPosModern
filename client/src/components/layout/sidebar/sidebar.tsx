@@ -6,6 +6,7 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { SidebarItem } from './sidebar-item';
 import type { SidebarMenuItem } from './sidebar-config';
 import { useEntitlements } from '@/hooks/useEntitlements';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export interface SidebarProps {
   items: SidebarMenuItem[];
@@ -29,6 +30,7 @@ export function Sidebar({
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { hasModule } = useEntitlements();
+  const hasPermission = useAuthStore((state) => state.hasPermission);
 
   const checkModuleAccess = (slugs?: string[]) => {
     if (!slugs || slugs.length === 0) return true;
@@ -42,6 +44,7 @@ export function Sidebar({
 
   const visibleItems = items.filter(item => {
     if (item.adminOnly && isCashier) return false;
+    if (item.permission && !hasPermission(item.permission)) return false;
     if (!checkModuleAccess(item.moduleAccess)) return false;
     return true;
   });

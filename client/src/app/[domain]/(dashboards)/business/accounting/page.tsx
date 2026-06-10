@@ -38,7 +38,6 @@ export default function AccountingPage() {
       const res = await api.get('/expenses');
       setExpenses(res.data?.data || res.data || []);
     } catch (err) {
-      console.error("Failed to fetch expenses", err);
       showToast('Failed to load expenses. Check API connection.', 'error');
     } finally {
       setLoading(false);

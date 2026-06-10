@@ -10,6 +10,9 @@ Route::prefix('v1')->group(function () {
     // License Activation (Public endpoint, uses license_key)
     Route::post('/licenses/activate-device', [\App\Modules\Tenant\Controllers\LicenseActivationController::class, 'activateDevice']);
 
+    // Webhooks (SaaS Billing)
+    Route::post('/webhooks/stripe', [\App\Modules\Tenant\Controllers\WebhookController::class, 'handleStripeWebhook']);
+
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/devices/heartbeat', [\App\Modules\Tenant\Controllers\LicenseActivationController::class, 'heartbeat']);
@@ -51,6 +54,28 @@ Route::prefix('v1')->group(function () {
             // Sync Engine (Web & Mobile Offline)
             Route::get('/sync/pull', [\App\Modules\Tenant\Controllers\SyncController::class, 'pull']);
             Route::post('/sync/push', [\App\Modules\Tenant\Controllers\SyncController::class, 'push']);
+
+            // Inventory Transfer
+            Route::post('/tenant/inventory/transfer', [\App\Modules\Catalog\Controllers\InventoryController::class, 'transfer']);
+
+            // Reports (Admin/Manager ONLY)
+            Route::middleware(['permission:view_reports'])->group(function () {
+                Route::get('/tenant/reports/profit-loss', [\App\Modules\Reports\Controllers\FinancialReportController::class, 'profitAndLoss']);
+                Route::get('/tenant/reports/valuation', [\App\Modules\Reports\Controllers\FinancialReportController::class, 'valuation']);
+            });
+
+            // Sales & CRM (Cashier allowed, but Hardware Locked)
+            Route::middleware(['permission:process_sales', 'hardware_lock'])->group(function () {
+                Route::post('/tenant/sales/checkout', [\App\Modules\Sales\Controllers\TransactionController::class, 'checkout'])->middleware('throttle:checkout');
+                Route::get('/tenant/registers/status', [\App\Modules\Sales\Controllers\RegisterController::class, 'status']);
+                Route::post('/tenant/registers/open', [\App\Modules\Sales\Controllers\RegisterController::class, 'open']);
+                Route::post('/tenant/registers/close', [\App\Modules\Sales\Controllers\RegisterController::class, 'close']);
+            });
+
+            // Procurement
+            Route::middleware(['permission:manage_purchases'])->group(function () {
+                Route::post('/tenant/purchases/receive', [\App\Modules\Procurement\Controllers\PurchaseController::class, 'receive']);
+            });
         });
 
 

@@ -154,7 +154,7 @@ export function useCheckout({ locationId, registerIsOpen, onSerialRequired, onSu
       
       onSuccess(receiptData);
     } catch (error: any) {
-      console.error("Checkout failed", error);
+
       const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message;
 
       if (error.response?.status === 422 && errorMessage.toLowerCase().includes('expired')) {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import toast from 'react-hot-toast';
 
 // ─── TypeScript Contracts ────────────────────────────────────────────────
 
@@ -149,7 +150,7 @@ export const TenantLedgerTable: React.FC<TenantLedgerProps> = ({ fetchTenants, o
             setLastPage(data.last_page);
             setTotal(data.total);
         } catch {
-            console.error('Failed to load tenants');
+            toast.error('Failed to load tenants');
         } finally {
             setLoading(false);
         }
@@ -167,7 +168,7 @@ export const TenantLedgerTable: React.FC<TenantLedgerProps> = ({ fetchTenants, o
             setSuspendTarget(null);
             loadTenants(page, debouncedSearch);
         } catch {
-            console.error('Suspend failed');
+            toast.error('Suspend failed');
         } finally {
             setSuspendLoading(false);
         }

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface User {
   id: number;
@@ -46,6 +47,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.removeItem('fastpos_user');
     localStorage.removeItem('fastpos_token');
     localStorage.removeItem('fastpos_user');
+    document.cookie = 'fastpos_business_status=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    useAuthStore.getState().clearAuth();
   };
 
   const login = async (payload: any, rememberMe: boolean) => {
@@ -63,6 +66,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.setItem('fastpos_token', token);
     }
     
+    if (userData?.business?.status) {
+      document.cookie = `fastpos_business_status=${userData.business.status}; path=/`;
+    }
+
     setUser(userData);
   };
 
@@ -70,7 +77,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await api.post('/logout');
     } catch (err) {
-      console.error("Logout API failed, continuing with client clearance.");
     } finally {
       clearStorage();
       setUser(null);

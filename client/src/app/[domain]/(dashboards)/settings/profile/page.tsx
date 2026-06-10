@@ -37,7 +37,6 @@ export default function ProfileSettingsPage() {
         setAvatarPreview(res.data.avatar.startsWith('http') ? res.data.avatar : `${process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '')}/storage/${res.data.avatar}`);
       }
     } catch (e) {
-      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -96,7 +95,6 @@ export default function ProfileSettingsPage() {
       playTaskSuccess();
       alert('Profile updated successfully!');
     } catch (err: any) {
-      console.error(err);
       alert(err.response?.data?.message || 'Failed to update profile');
     } finally {
       setSubmitting(false);

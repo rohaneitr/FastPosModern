@@ -64,7 +64,6 @@ export function RegisterSessionProvider({ children }: { children: React.ReactNod
                 setStage('WORKSPACE_ACTIVE');
             }
         } catch (error: any) {
-            console.error('Failed to refresh register status:', error);
             if (!navigator.onLine || error.code === 'ECONNABORTED' || error.message === 'Network Error') {
                 setStage((prev) => prev === 'WORKSPACE_ACTIVE' ? 'OFFLINE_ACTIVE' : 'DRAWER_LOCKED');
             } else {
@@ -88,7 +87,6 @@ export function RegisterSessionProvider({ children }: { children: React.ReactNod
 
                 await refreshStatus();
             } catch (error) {
-                console.error('Boot sequence failed:', error);
                 if (isMounted) {
                     setStage('DRAWER_LOCKED');
                 }
@@ -153,14 +151,12 @@ export function RegisterSessionProvider({ children }: { children: React.ReactNod
                                 toast.error(`Isolated broken offline transaction: ${errorReason}`);
                             } else {
                                 // 5xx Server Error or Network Timeout: keep in queue for next retry
-                                console.error('Network or server error during sync, queue preserved', err);
                             }
                         }
                     }
                     toast.success('Offline sync cycle complete.', { id: 'sync' });
                 }
             } catch (e) {
-                console.error('Failed to process offline queue', e);
             }
         };
 

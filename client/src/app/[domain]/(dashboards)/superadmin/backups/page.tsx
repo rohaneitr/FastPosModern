@@ -18,7 +18,6 @@ export default function BackupsPage() {
       const res = await api.get('/superadmin/backups');
       setBackups(res.data);
     } catch (e) {
-      console.error('Failed to fetch backups', e);
     } finally {
       setLoading(false);
     }

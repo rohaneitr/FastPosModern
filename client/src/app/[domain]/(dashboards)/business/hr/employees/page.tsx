@@ -41,7 +41,6 @@ export default function EmployeeProfilePage() {
       const res = await api.get('/hr/employees');
       if (res.data) setEmployees(res.data);
     } catch (err) {
-      console.warn('Failed to fetch employees', err);
     } finally {
       setLoading(false);
     }
@@ -110,7 +109,6 @@ export default function EmployeeProfilePage() {
       const res = await api.get(`/hr/attendance?month=${month}`);
       if (res.data) setAttendances(res.data);
     } catch (e) {
-      console.error(e);
     } finally {
       setAttLoading(false);
     }

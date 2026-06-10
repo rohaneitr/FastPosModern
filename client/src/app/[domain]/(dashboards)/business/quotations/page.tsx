@@ -78,7 +78,6 @@ export default function QuotationsPage() {
       const res = await api.get('/sales?status=quotation');
       setQuotations(res.data?.data || []);
     } catch (err) {
-      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -89,7 +88,6 @@ export default function QuotationsPage() {
       const res = await api.get('/products');
       setProducts(res.data?.data || res.data || []);
     } catch (err) {
-      console.error(err);
     }
   };
 
@@ -98,7 +96,6 @@ export default function QuotationsPage() {
       const res = await api.get('/contacts?type=customer');
       setContacts(res.data?.data || res.data || []);
     } catch (err) {
-      console.error(err);
     }
   };
 

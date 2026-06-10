@@ -66,8 +66,8 @@ export default function SuperAdminSettingsPage() {
         enable_registration: data.enable_registration === '1' || data.enable_registration === true,
         maintenance_mode: data.maintenance_mode === '1' || data.maintenance_mode === true
       });
-    } catch (err) {
-      console.error('Failed to load settings', err);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to load settings');
     }
   };
 
@@ -105,7 +105,6 @@ export default function SuperAdminSettingsPage() {
       playTaskSuccess();
       toast.success('Global SaaS branding updated successfully!');
     } catch (err: any) {
-      console.error(err);
       toast.error(err.response?.data?.message || 'Failed to update global branding');
     } finally {
       setSubmitting(false);
@@ -133,7 +132,6 @@ export default function SuperAdminSettingsPage() {
       playTaskSuccess();
       toast.success('System & SMTP preferences updated successfully!');
     } catch (err: any) {
-      console.error(err);
       toast.error(err.response?.data?.message || 'Failed to update system preferences');
     } finally {
       setSubmitting(false);
@@ -174,7 +172,6 @@ export default function SuperAdminSettingsPage() {
       playTaskSuccess();
       toast.success('Admin profile updated successfully!');
     } catch (err: any) {
-      console.error(err);
       toast.error(err.response?.data?.message || 'Failed to update admin profile');
     } finally {
       setSubmitting(false);

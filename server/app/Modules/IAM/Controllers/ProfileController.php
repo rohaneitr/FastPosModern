@@ -59,6 +59,19 @@ class ProfileController extends Controller
 
         $user->update(['password' => Hash::make($request->password)]);
 
+        // Security: Invalidate all other active sessions/tokens
+        if ($user->currentAccessToken()) {
+            $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
+        } else {
+            $user->tokens()->delete();
+        }
+        
+        if (config('session.driver') === 'database') {
+            DB::table('sessions')->where('user_id', $user->id)->where('id', '!=', session()->getId())->delete();
+        }
+        
+        DB::table('user_devices')->where('user_id', $user->id)->update(['status' => 'logged_out']);
+
         // Log activity
         DB::table('user_activities')->insert([
             'user_id' => $user->id,

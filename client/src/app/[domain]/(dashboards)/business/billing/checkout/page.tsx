@@ -34,7 +34,6 @@ export default function CheckoutPage() {
         setPlan(selectedPlan);
         setTenantId(meRes.data.business_id);
       } catch (err) {
-        console.error(err);
       } finally {
         setLoading(false);
       }

@@ -30,7 +30,6 @@ export function ZReportClosureModal() {
             try {
                 await cashControlApi.suspendRegisterSession();
             } catch (err) {
-                console.error("Failed to suspend register", err);
             }
         };
         suspend();
@@ -61,7 +60,6 @@ export function ZReportClosureModal() {
             await cashControlApi.closeRegisterSession(totalCounted.toString());
             await refreshStatus();
         } catch (error) {
-            console.error('Failed to close session', error);
             setIsSubmitting(false);
         }
     };

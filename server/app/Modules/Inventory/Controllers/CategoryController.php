@@ -7,6 +7,7 @@ use App\Modules\Inventory\Models\Category;
 use App\Modules\Inventory\Requests\StoreCategoryRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class CategoryController extends Controller
 {
@@ -16,13 +17,19 @@ class CategoryController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Category::query();
+            $businessId = $request->user()->business_id ?? 0;
+            $search = $request->search ?? '';
+            $cacheKey = "categories_b{$businessId}_s{$search}";
 
-            if ($request->filled('search')) {
-                $query->where('name', 'like', '%' . $request->search . '%');
-            }
+            $categories = Cache::remember($cacheKey, 3600, function () use ($request) {
+                $query = Category::query();
 
-            $categories = $query->latest()->get();
+                if ($request->filled('search')) {
+                    $query->where('name', 'like', '%' . $request->search . '%');
+                }
+
+                return $query->latest()->get();
+            });
 
             return response()->json([
                 'status' => 'success',
@@ -44,6 +51,8 @@ class CategoryController extends Controller
     {
         try {
             $category = Category::create($request->validated());
+            $businessId = $request->user()->business_id ?? 0;
+            Cache::flush(); // Simple flush or tag-based invalidation. For now flush all to ensure sub-20ms reads across permutations
 
             return response()->json([
                 'status' => 'success',
@@ -66,6 +75,7 @@ class CategoryController extends Controller
     {
         try {
             $category->update($request->validated());
+            Cache::flush();
 
             return response()->json([
                 'status' => 'success',
@@ -88,6 +98,7 @@ class CategoryController extends Controller
     {
         try {
             $category->delete();
+            Cache::flush();
 
             return response()->json([
                 'status' => 'success',

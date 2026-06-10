@@ -212,6 +212,15 @@ class InventoryController extends Controller
                 'qty_before' => $dest ? $dest->qty_available : 0,
                 'qty_after' => ($dest ? $dest->qty_available : 0) + $validated['quantity'],
             ]));
+            
+            DB::table('user_activities')->insert([
+                'user_id' => $request->user()->id,
+                'action' => 'Stock Transfer',
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
             DB::commit();
 

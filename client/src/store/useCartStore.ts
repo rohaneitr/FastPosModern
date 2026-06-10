@@ -23,6 +23,7 @@ export interface CartItem {
   is_medicine?: boolean;
   is_rx_required?: boolean;
   unit_conversion_ratio?: number;
+  stockError?: string;
 }
 
 interface CartStore {
@@ -44,6 +45,9 @@ interface CartStore {
   // Hydration state
   hasHydrated: boolean;
   setHasHydrated: (state: boolean) => void;
+  
+  // Error handling
+  setCartItemError: (product_id: number, error: string | undefined) => void;
 }
 
 export const useCartStore = create<CartStore>()(
@@ -97,13 +101,19 @@ export const useCartStore = create<CartStore>()(
 
       updateQuantity: (id, quantity) => set((state) => ({
         items: state.items.map(item => 
-          item.id === id ? { ...item, quantity: Math.max(1, quantity) } : item
+          item.id === id ? { ...item, quantity: Math.max(1, quantity), stockError: undefined } : item
         )
       })),
 
       updateItemField: (id, field, value) => set((state) => ({
         items: state.items.map(item => 
-          item.id === id ? { ...item, [field]: value } : item
+          item.id === id ? { ...item, [field]: value, stockError: undefined } : item
+        )
+      })),
+
+      setCartItemError: (product_id, error) => set((state) => ({
+        items: state.items.map(item => 
+          item.product_id === product_id ? { ...item, stockError: error } : item
         )
       })),
 

@@ -47,6 +47,13 @@ class AppServiceProvider extends ServiceProvider
             });
         });
 
+        // 1b. Checkout Gateway (Anti-Spam / Double-Billing)
+        \Illuminate\Support\Facades\RateLimiter::for('checkout', function (\Illuminate\Http\Request $request) {
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(10)->by($request->user()?->id ?: $request->ip())->response(function () {
+                return response()->json(['message' => 'Checkout Rate Limit Exceeded', 'error_code' => 'RATE_LIMIT_EXCEEDED'], 429);
+            });
+        });
+
         // 2. Mobile Pulse Telemetry
         \Illuminate\Support\Facades\RateLimiter::for('mobile_pulse', function (\Illuminate\Http\Request $request) {
             $fingerprint = $request->header('X-Device-Fingerprint') ?: $request->ip();

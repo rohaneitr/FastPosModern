@@ -54,7 +54,6 @@ export default function TenantBrandingPage() {
       playTaskSuccess();
       alert('Tenant branding updated successfully!');
     } catch (err: any) {
-      console.error(err);
       alert(err.response?.data?.message || 'Failed to update branding');
     } finally {
       setSubmitting(false);

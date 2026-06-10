@@ -28,7 +28,6 @@ export default function BillingPage() {
       setSubscriptionInfo(subRes.data);
       setPlans(plansRes.data);
     } catch (err) {
-      console.error(err);
     } finally {
       setLoading(false);
     }

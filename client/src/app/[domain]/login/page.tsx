@@ -54,7 +54,6 @@ export default function TenantLoginPage() {
            });
         })
         .catch(err => {
-           console.error("Failed to load tenant branding", err);
            setError(`Could not verify tenant domain '${domain}'. Proceeding with default branding.`);
         });
     }
@@ -124,7 +123,6 @@ export default function TenantLoginPage() {
         router.push('/user/pos');
       }
     } catch (err: any) {
-      console.error("CRITICAL_LOGIN_FAIL:", err);
       if (err.response?.status === 428 && err.response?.data?.requires_2fa) {
         setRequires2FA(true);
       } else if (err.response?.status === 422) {

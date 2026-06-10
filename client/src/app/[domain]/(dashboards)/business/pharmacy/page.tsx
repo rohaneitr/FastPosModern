@@ -37,7 +37,6 @@ export default function PharmacyPage() {
         setTotalItems(res.data.total);
       }
     } catch (e) {
-      console.error(e);
     } finally {
       setLoading(false);
     }

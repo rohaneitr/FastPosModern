@@ -33,7 +33,6 @@ export default function CustomerLedgerPage() {
       setLedger(ledgerRes.data.ledger);
       setSummary(summaryRes.data);
     } catch (err) {
-      console.error('Failed to load ledger', err);
     } finally {
       setLoading(false);
     }

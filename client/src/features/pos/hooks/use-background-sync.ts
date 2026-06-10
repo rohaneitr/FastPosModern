@@ -60,7 +60,7 @@ export function useBackgroundSync() {
           toast.success(`Successfully synced ${successes.length} offline transactions!`);
         }
       } catch (err: any) {
-        console.error('Offline Sync Failed', err);
+
       } finally {
         setIsSyncing(false);
         const count = await db.offline_sales_queue.where('status').equals('pending_sync').count();

@@ -29,7 +29,7 @@ class LedgerReportingService
     /**
      * Generate Profit & Loss Report based strictly on the Ledger.
      */
-    public function getProfitAndLoss(int $businessId, string $startDate, string $endDate): array
+    public function getProfitAndLoss(int $businessId, string $startDate, string $endDate, string $accountingMethod = 'accrual'): array
     {
         if (!$this->verifyTrialBalance($businessId, $startDate, $endDate)) {
             throw new \Exception('TrialBalanceMismatchException: The ledger does not balance for this period.');
@@ -40,8 +40,28 @@ class LedgerReportingService
             ->join('chart_of_accounts', 'journal_lines.chart_of_account_id', '=', 'chart_of_accounts.id')
             ->where('journal_entries.business_id', $businessId)
             ->whereBetween('journal_entries.date', [$startDate, $endDate])
-            ->whereNull('journal_entries.deleted_at')
-            ->whereIn('chart_of_accounts.type', ['revenue', 'expense'])
+            ->whereNull('journal_entries.deleted_at');
+
+        // Apply Accounting Method Logic
+        if ($accountingMethod === 'cash') {
+            // In Cash-Basis, we only recognize revenue and expenses when cash changes hands.
+            // This means the journal entry MUST contain a line with a Cash account.
+            $lines->whereExists(function ($query) {
+                $query->select(DB::raw(1))
+                      ->from('journal_lines as jl2')
+                      ->join('chart_of_accounts as coa2', 'jl2.chart_of_account_id', '=', 'coa2.id')
+                      ->whereRaw('jl2.journal_entry_id = journal_entries.id')
+                      ->where('coa2.name', 'like', '%Cash%')
+                      ->orWhere('coa2.name', 'like', '%Bank%');
+            });
+        } elseif ($accountingMethod === 'accrual') {
+            // In Accrual-Basis, we must account for Deferred Revenue.
+            // Example: If a 1-year upfront payment was received, revenue is recognized monthly.
+            // (Assumes a scheduled job moves Deferred Revenue -> Revenue). We just look at Revenue accounts.
+            // No extra filtering needed for standard accrual, it natively pulls the Revenue/Expense lines.
+        }
+
+        $lines = $lines->whereIn('chart_of_accounts.type', ['revenue', 'expense', 'liability'])
             ->select(
                 'chart_of_accounts.type as account_type',
                 'chart_of_accounts.name as account_name',
@@ -65,6 +85,12 @@ class LedgerReportingService
                 $balance = $line->total_credits - $line->total_debits;
                 $revenue[] = ['name' => $line->account_name, 'balance' => $balance];
                 $totalRevenue += $balance;
+            }
+            // Deferred Revenue (Liability) - adjust if Accrual basis
+            elseif (strtolower($line->account_type) === 'liability' && stripos($line->account_name, 'deferred revenue') !== false) {
+                // If we want to show it on P&L, usually it's on Balance Sheet, but for reporting clarity we might show unrecognized
+                // For standard P&L, deferred revenue is not shown. We skip it, as the actual revenue is recognized into a Revenue account.
+                continue;
             }
             // COGS normal balance is Debit
             elseif (strtolower($line->account_type) === 'expense' && strtolower($line->account_name) === 'cost of goods sold') {

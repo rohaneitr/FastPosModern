@@ -28,7 +28,6 @@ export default function ContactsPage() {
         setContacts(res.data.data);
       }
     } catch (err) {
-      console.error("Failed to fetch contacts", err);
       // Removed fallback mock data to enforce real API
       setContacts([]);
     } finally {

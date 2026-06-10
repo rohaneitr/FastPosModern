@@ -61,7 +61,7 @@ export const KanbanBoard = ({ businessId }: { businessId: number }) => {
             setProcessing(draggedOrder.id, false);
         } catch (error: any) {
             // 409 Conflict or 422 Unprocessable Entity
-            console.error('State Transition Failed', error);
+
             rollbackOrder(draggedOrder.id, originalStatus);
             alert(error.response?.data?.message || 'Failed to update order status. Rolling back.');
         } finally {

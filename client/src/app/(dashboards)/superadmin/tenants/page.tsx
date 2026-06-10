@@ -1,13 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import useSWR from 'swr';
 import api from '@/lib/api';
 import BulkMessageModal from '@/components/BulkMessageModal';
 import toast from 'react-hot-toast';
 
+const fetcher = (url: string) => api.get(url).then(res => res.data);
+
 export default function SuperadminPage() {
-  const [businesses, setBusinesses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  const initialPage = parseInt(searchParams.get('page') || '1', 10);
+  const initialSearch = searchParams.get('search') || '';
+  const initialFilter = searchParams.get('status') || 'all';
   
   // Modules Modal State
   const [showModulesModal, setShowModulesModal] = useState(false);
@@ -39,13 +47,9 @@ export default function SuperadminPage() {
   ];
 
   // Search and Filter State
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [statusFilter, setStatusFilter] = useState(initialFilter);
+  const [currentPage, setCurrentPage] = useState(initialPage);
   
   const showToast = (message: string, type: 'success'|'error') => {
     if (type === 'success') toast.success(message);
@@ -54,16 +58,27 @@ export default function SuperadminPage() {
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      setCurrentPage(1); // Reset to page 1 on new search
-      fetchBusinesses();
-    }, 500);
+      const params = new URLSearchParams();
+      if (searchTerm) params.set('search', searchTerm);
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      params.set('page', currentPage.toString());
+      router.replace(`?${params.toString()}`);
+    }, 400);
     return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm]);
+  }, [searchTerm, statusFilter, currentPage, router]);
+
+  const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : '';
+  const filterParam = statusFilter !== 'all' ? `&status=${statusFilter}` : '';
+  const { data: swrData, error: swrError, mutate: mutateBusinesses } = useSWR(`/superadmin/businesses?page=${currentPage}${searchParam}${filterParam}`, fetcher, { keepPreviousData: true });
+
+  const businesses = swrData?.data || swrData || [];
+  const loading = !swrData && !swrError;
+  const totalPages = swrData?.last_page || 1;
+  const totalItems = swrData?.total || 0;
 
   useEffect(() => {
-    fetchBusinesses();
     fetchPlans();
-  }, [currentPage]);
+  }, []);
 
   const fetchPlans = async () => {
     try {
@@ -72,43 +87,22 @@ export default function SuperadminPage() {
     } catch (e) {}
   };
 
-  const fetchBusinesses = async () => {
-    setLoading(true);
-    try {
-      const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : '';
-      const res = await api.get(`/superadmin/businesses?page=${currentPage}${searchParam}`);
-      if (res.data) {
-        setBusinesses(res.data.data || res.data);
-        if (res.data.last_page) {
-           setTotalPages(res.data.last_page);
-           setTotalItems(res.data.total);
-        }
-      }
-    } catch (err: any) {
-      console.error("Failed to fetch businesses", err);
-      if (err.response?.status === 401 || err.response?.status === 403) {
-         window.location.href = '/login'; 
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleToggle = async (id: number) => {
-    const backup = [...businesses];
-    // Optimistic toggle
-    const tenant = businesses.find(b => b.id === id);
+    const tenant = businesses.find((b: any) => b.id === id);
     const newStatus = tenant ? !tenant.is_active : false;
-    setBusinesses(prev => prev.map(b => b.id === id ? { ...b, is_active: newStatus } : b));
+    mutateBusinesses((prev: any) => {
+       const dataArr = prev?.data || prev || [];
+       const newArr = dataArr.map((b: any) => b.id === id ? { ...b, is_active: newStatus } : b);
+       return prev?.data ? { ...prev, data: newArr } : newArr;
+    }, false);
     
     try {
-      const res = await api.post(`/superadmin/businesses/${id}/toggle`);
-      setBusinesses(prev => prev.map(b => b.id === id ? { ...b, is_active: res.data.is_active } : b));
-      showToast(`Tenant status updated to ${res.data.is_active ? 'Active' : 'Suspended'}`, 'success');
-    } catch (err) {
-      setBusinesses(backup); // Rollback
-      showToast('Failed to toggle tenant status. Check permissions.', 'error');
-      console.error(err);
+      await api.post(`/superadmin/businesses/${id}/toggle`);
+      mutateBusinesses();
+      showToast('Tenant status updated', 'success');
+    } catch (err: any) {
+      mutateBusinesses(); // Rollback
+      toast.error(err.response?.data?.message || 'An error occurred');
     }
   };
 
@@ -125,9 +119,9 @@ export default function SuperadminPage() {
       await api.post(`/superadmin/businesses/${selectedTenantId}/modules`, { active_modules: activeModules });
       showToast('Modules updated successfully', 'success');
       setShowModulesModal(false);
-      fetchBusinesses();
+      mutateBusinesses();
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to update modules', 'error');
+      toast.error(err.response?.data?.message || 'An error occurred');
     } finally {
       setSubmitting(false);
     }
@@ -142,14 +136,14 @@ export default function SuperadminPage() {
   const handleRenewSubscription = async () => {
     setSubmitting(true);
     try {
-      const tenant = businesses.find(b => b.id === selectedTenantId);
+      const tenant = businesses.find((b: any) => b.id === selectedTenantId);
       if (!tenant || !tenant.subscription_id) throw new Error("No subscription attached to this tenant.");
       await api.post(`/superadmin/subscriptions/${tenant.subscription_id}/renew`, { extension_period: billingForm.duration });
       showToast('Subscription renewed successfully', 'success');
       setShowBillingModal(false);
-      fetchBusinesses();
+      mutateBusinesses();
     } catch (err: any) {
-      showToast(err.response?.data?.message || err.message || 'Failed to renew subscription', 'error');
+      toast.error(err.response?.data?.message || 'An error occurred');
     } finally {
       setSubmitting(false);
     }
@@ -158,14 +152,14 @@ export default function SuperadminPage() {
   const handleOverrideStatus = async () => {
     setSubmitting(true);
     try {
-      const tenant = businesses.find(b => b.id === selectedTenantId);
+      const tenant = businesses.find((b: any) => b.id === selectedTenantId);
       if (!tenant || !tenant.subscription_id) throw new Error("No subscription attached to this tenant.");
       await api.patch(`/superadmin/subscriptions/${tenant.subscription_id}/status`, { status: billingForm.status.toLowerCase() });
       showToast('Subscription status overridden', 'success');
       setShowBillingModal(false);
-      fetchBusinesses();
+      mutateBusinesses();
     } catch (err: any) {
-      showToast(err.response?.data?.message || err.message || 'Failed to override status', 'error');
+      toast.error(err.response?.data?.message || 'An error occurred');
     } finally {
       setSubmitting(false);
     }
@@ -179,9 +173,9 @@ export default function SuperadminPage() {
       showToast('Tenant created successfully', 'success');
       setShowCreateModal(false);
       setCreateForm({ name: '', owner_email: '', password: '', plan_id: '', subdomain: '' });
-      fetchBusinesses();
+      mutateBusinesses();
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to create tenant', 'error');
+      toast.error(err.response?.data?.message || 'An error occurred');
     } finally {
       setSubmitting(false);
     }
@@ -214,7 +208,7 @@ export default function SuperadminPage() {
       
       window.location.href = `${window.location.protocol}//${newHost}/business`;
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to impersonate', 'error');
+      toast.error(err.response?.data?.message || 'An error occurred');
     }
   };
 
@@ -230,7 +224,7 @@ export default function SuperadminPage() {
       link.click();
       link.remove();
     } catch (err: any) {
-      showToast('Failed to export tenant data', 'error');
+      toast.error(err.response?.data?.message || 'An error occurred');
     }
   };
 
@@ -243,11 +237,10 @@ export default function SuperadminPage() {
     try {
       showToast('Generating License Code...', 'success');
       const res = await api.post(`/superadmin/licenses/generate`, { tenant_id: b.id, plan_id: b.plan_id });
-      // We can prompt it directly
       prompt('License Generated! Please copy this License Code and securely deliver it to the tenant:', res.data.license_key);
-      fetchBusinesses();
+      mutateBusinesses();
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to generate license', 'error');
+      toast.error(err.response?.data?.message || 'An error occurred');
     } finally {
       setSubmitting(false);
     }
@@ -259,15 +252,15 @@ export default function SuperadminPage() {
       setSubmitting(true);
       await api.delete(`/superadmin/businesses/${id}`);
       showToast('Tenant permanently deleted', 'success');
-      fetchBusinesses();
+      mutateBusinesses();
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to delete tenant', 'error');
+      toast.error(err.response?.data?.message || 'An error occurred');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const filteredBusinesses = businesses.filter(b => {
+  const filteredBusinesses = businesses.filter((b: any) => {
     const matchesStatus = statusFilter === 'all' || 
                           (statusFilter === 'active' && Boolean(b.is_active)) || 
                           (statusFilter === 'suspended' && !Boolean(b.is_active));
@@ -314,7 +307,10 @@ export default function SuperadminPage() {
             type="text" 
             placeholder="Search by business name, owner, or email..." 
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
             className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-2.5 text-white outline-none focus:border-fuchsia-500/50 focus:ring-2 focus:ring-fuchsia-500/20 transition-all placeholder:text-text-muted"
           />
         </div>
@@ -322,7 +318,7 @@ export default function SuperadminPage() {
           {['all', 'active', 'suspended'].map(status => (
             <button 
               key={status}
-              onClick={() => setStatusFilter(status)}
+              onClick={() => { setStatusFilter(status); setCurrentPage(1); }}
               className={`flex-1 sm:px-6 py-1.5 rounded-lg text-sm font-semibold capitalize transition-all ${
                 statusFilter === status 
                   ? 'bg-surface text-white shadow-sm' 
@@ -379,7 +375,7 @@ export default function SuperadminPage() {
                   </td>
                 </tr>
               ) : (
-                filteredBusinesses.map(b => {
+                filteredBusinesses.map((b: any) => {
                   const isActive = Boolean(b.is_active);
                   const isLifetime = !b.subscription_expires_at;
                   return (
@@ -724,7 +720,7 @@ export default function SuperadminPage() {
       <BulkMessageModal 
         isOpen={showBulkMessageModal}
         onClose={() => setShowBulkMessageModal(false)}
-        users={businesses.filter(b => b.owner_id).map(b => ({
+        users={businesses.filter((b: any) => b.owner_id).map((b: any) => ({
           id: b.owner_id,
           name: `${b.name} (Admin)`,
           email: 'Tenant Admin'

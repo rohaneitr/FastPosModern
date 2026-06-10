@@ -44,7 +44,6 @@ export default function TenantSupportPage() {
       const res = await api.get('/tickets');
       if (res.data) setTickets(res.data);
     } catch (err) {
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -59,7 +58,6 @@ export default function TenantSupportPage() {
       setCreateForm({ subject: '', priority: 'medium', message: '' });
       fetchTickets();
     } catch (err) {
-      console.error(err);
       alert('Failed to create ticket');
     } finally {
       setSubmitting(false);
@@ -71,7 +69,6 @@ export default function TenantSupportPage() {
       const res = await api.get(`/tickets/${id}`);
       setActiveTicket(res.data);
     } catch (err) {
-      console.error(err);
     }
   };
 
@@ -89,7 +86,6 @@ export default function TenantSupportPage() {
       } : null);
       setReplyMessage('');
     } catch (err) {
-      console.error(err);
       alert('Failed to send reply');
     } finally {
       setReplying(false);
@@ -103,7 +99,6 @@ export default function TenantSupportPage() {
       setActiveTicket(prev => prev ? { ...prev, status: 'closed' } : null);
       setTickets(prev => prev.map(t => t.id === activeTicket.id ? { ...t, status: 'closed' } : t));
     } catch (err) {
-      console.error(err);
     }
   };
 

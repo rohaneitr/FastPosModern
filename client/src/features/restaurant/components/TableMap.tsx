@@ -22,7 +22,7 @@ export function TableMap({ businessId }: { businessId: number }) {
       const res = await api.get('/restaurant/tables');
       setTables(res.data.data || res.data);
     } catch (e) {
-      console.error('Failed to fetch tables:', e);
+
     } finally {
       setLoading(false);
     }

@@ -44,7 +44,7 @@ export function Topbar({ onMenuToggle, className }: TopbarProps) {
         const res = await api.get(`/products?page=1&search=${encodeURIComponent(globalSearch)}`);
         setGlobalResults(res.data.data || res.data || []);
       } catch {
-        console.error('Global search failed');
+
       } finally {
         setIsSearching(false);
       }
