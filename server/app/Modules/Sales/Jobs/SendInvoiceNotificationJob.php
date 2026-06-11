@@ -8,6 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
+use App\Modules\Tenant\Services\TenantContext;
 
 class SendInvoiceNotificationJob implements ShouldQueue
 {
@@ -33,31 +34,36 @@ class SendInvoiceNotificationJob implements ShouldQueue
 
     public function handle()
     {
-        $engine = app(\App\Modules\Sales\Services\PDFInvoiceEngine::class);
-        $pdfPath = $engine->streamInvoice($this->transactionId, $this->businessId);
+        // TENANT SAFETY: Set explicit context — never rely on auth() inside queue workers.
+        // $this->businessId is passed at dispatch time from the authenticated HTTP request.
+        TenantContext::for($this->businessId, function () {
+            $engine = app(\App\Modules\Sales\Services\PDFInvoiceEngine::class);
+            $pdfPath = $engine->streamInvoice($this->transactionId, $this->businessId);
 
-        $transaction = DB::table('transactions')->where('id', $this->transactionId)->first();
+            $transaction = DB::table('transactions')
+                ->where('id', $this->transactionId)
+                ->where('business_id', $this->businessId) // explicit tenant guard
+                ->first();
 
-        // Email Execution
-        if (in_array('email', $this->notifyMethods) && !empty($this->contact->email)) {
-            \Illuminate\Support\Facades\Mail::to($this->contact->email)
-                ->send(new \App\Mail\CustomerInvoiceMail($this->transactionId, $pdfPath));
-        }
+            // Email Execution
+            if (in_array('email', $this->notifyMethods) && !empty($this->contact->email)) {
+                \Illuminate\Support\Facades\Mail::to($this->contact->email)
+                    ->send(new \App\Mail\CustomerInvoiceMail($this->transactionId, $pdfPath));
+            }
 
-        // WhatsApp Execution
-        if (in_array('whatsapp', $this->notifyMethods) && !empty($this->contact->mobile)) {
-            // Remediation: Use $this->transactionId inside token directly for the signed route fix
-            $signedUrl = \Illuminate\Support\Facades\URL::temporarySignedRoute(
-                'public.invoice.download', 
-                now()->addHours(3), 
-                ['token' => $this->transactionId]
-            );
-            
-            // Note: Since this is architecture scaffolding, we comment actual gateway call
-            // $gateway = app(\App\Services\WhatsAppGatewayService::class);
-            // $gateway->sendMediaMessage($this->contact->mobile, $signedUrl, "Invoice #{$transaction->invoice_no}");
-            
-            \Illuminate\Support\Facades\Log::info("WhatsApp Payload Sent", ['url' => $signedUrl, 'contact' => $this->contact->mobile]);
-        }
+            // WhatsApp Execution
+            if (in_array('whatsapp', $this->notifyMethods) && !empty($this->contact->mobile)) {
+                $signedUrl = \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                    'public.invoice.download',
+                    now()->addHours(3),
+                    ['token' => $this->transactionId]
+                );
+                \Illuminate\Support\Facades\Log::info("WhatsApp Payload Sent", [
+                    'url' => $signedUrl,
+                    'contact' => $this->contact->mobile,
+                    'business_id' => $this->businessId,
+                ]);
+            }
+        });
     }
 }
