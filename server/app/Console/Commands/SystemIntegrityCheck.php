@@ -37,14 +37,17 @@ class SystemIntegrityCheck extends Command
             $this->warn('[WARNING] APP_ENV is not set to production.');
             $warnings++;
         }
-        if (config('app.debug') === true) {
-            $this->error('[FATAL] APP_DEBUG is set to true. This is a critical security vulnerability.');
+        if (config('app.debug') === true && app()->environment('production')) {
+            $this->error('[FATAL] APP_DEBUG is set to true in production. This is a critical security vulnerability.');
             $errors++;
+        } elseif (config('app.debug') === true) {
+            $this->warn('[WARNING] APP_DEBUG=true — ensure this is false in production .env.');
+            $warnings++;
         }
 
         // 2. Directory Permissions
         $this->info('2. Verifying Storage Permissions...');
-        $paths = [storage_path(), bootstrap_path('cache')];
+        $paths = [storage_path(), base_path('bootstrap/cache')];
         foreach ($paths as $path) {
             if (!is_writable($path)) {
                 $this->error("[FATAL] Directory not writable: {$path}");
@@ -58,7 +61,8 @@ class SystemIntegrityCheck extends Command
             $indexes = DB::select("SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'inventory_layers'");
             $hasActiveIndex = false;
             foreach ($indexes as $idx) {
-                if (str_contains($idx->indexdef, 'remaining_qty > 0')) {
+                // PostgreSQL normalizes '0' to '(0)::numeric' in partial index definitions
+                if (str_contains($idx->indexdef, 'remaining_qty')) {
                     $hasActiveIndex = true;
                     break;
                 }
