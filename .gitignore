@@ -1,0 +1,63 @@
+# ── FastPOS Modern — Root .gitignore ──────────────────────────────────────
+# Phase 5 Garbage Cleanup — 2026-06-12
+
+# ── Generated Analysis/Report Files (AI session outputs) ──────────────────
+repomix-output.xml
+repomix-output*.xml
+repository.md
+repository_tree.md
+database_bible.md
+backend_bible.md
+architecture_analysis.md
+frontend_ui_audit_report.md
+module_gap_analysis_report.md
+*_REPORT.md
+*_ROADMAP.md
+*_MATRIX.md
+*_MANIFEST.md
+*_AUDIT*.md
+*_AUDIT_PLAN.md
+*_BLUEPRINT.md
+*_READINESS*.md
+FASTPOS_*.md
+FPM_*.md
+
+# ── Generated JSON analysis files ─────────────────────────────────────────
+api_drift_report.json
+audit_inventory.json
+GAP_ANALYSIS_REPORT.json
+
+# ── One-off scripts ────────────────────────────────────────────────────────
+analyze_architecture.php
+clean_logs.js
+
+# ── Test/import data files (keep 0000.csv for import testing) ─────────────
+*.parquet
+# 0000.csv  ← intentionally kept by user
+
+# ── PHP Composer binary ────────────────────────────────────────────────────
+server/composer.phar
+*.phar
+
+# ── Schema dumps (sensitive — DB structure) ────────────────────────────────
+server/scripts/schema_dump.json
+server/scripts/db_schema.json
+server/scripts/*.json
+server/scripts/analysis_result.txt
+server/scripts/test_output.txt
+server/scripts/output.json
+server/scripts/login.json
+
+# ── Frontend build artifacts ───────────────────────────────────────────────
+client/.next/
+client/playwright-report/
+client/before-fill.png
+client/test-results/
+
+# ── OS/Editor ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+*.suo
