@@ -466,7 +466,13 @@ hr.attendance         → Clock in/out (all staff)
 
 
 ### Phase 4: Frontend Component Decomposition (2–3 sessions)
-- [ ] **Task 4.1**: Break `tenants/page.tsx` → `<TenantTable>`, `<TenantMetrics>`, `useTenants.ts`
+- [x] **Task 4.1**: `tenants/page.tsx` decomposed — 731L → 70L — 2026-06-12
+  - Created: `features/superadmin/tenants/types/index.ts` (Tenant, Plan, BillingFormState, etc.)
+  - Created: `features/superadmin/tenants/hooks/useTenants.ts` (all state + 9 actions + SWR)
+  - Created: `features/superadmin/tenants/components/TenantStatusBadges.tsx`
+  - Created: `features/superadmin/tenants/components/TenantTable.tsx` (+ Skeleton, EmptyState, QuotaBar, Row)
+  - Created: `features/superadmin/tenants/components/TenantModals.tsx` (ManageModules, Billing, CreateTenant)
+  - Build: ✅ Exit code 0 — /superadmin/tenants compiled successfully
 - [ ] **Task 4.2**: Break `terminal/page.tsx` → extract to `features/pos/` components + hooks
 - [ ] **Task 4.3**: Break `categories/page.tsx` → `<CategoryForm>`, `<CategoryTable>`, `useCategories.ts`
 
