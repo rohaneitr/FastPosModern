@@ -494,10 +494,25 @@ hr.attendance         → Clock in/out (all staff)
   - Build: ✅ Exit code 0 (all pages verified)
 
 ### Phase 5: Architecture Cleanup
-- [ ] **Task 5.1**: Merge `Clinic` into `Clinical` module
-- [ ] **Task 5.2**: Merge `Reports` into `Reporting` module
-- [ ] **Task 5.3**: Move test utility scripts from `server/` root to `scripts/`
-- [ ] **Task 5.4**: Move all route RBAC policy to centralized `RouteServiceProvider`
+- [x] **Task 5.1**: Merge `Clinic` into `Clinical` — 2026-06-12
+  - Moved: `Clinic/Services/MedicalReportEngine.php` → `Clinical/Services/MedicalReportEngine.php`
+  - Updated namespace: `App\Modules\Clinic\Services` → `App\Modules\Clinical\Services`
+  - Updated test: `tests/Feature/Clinic/` → `tests/Feature/Clinical/`
+  - Deleted: `app/Modules/Clinic/` (zero remaining refs verified)
+- [x] **Task 5.2**: Merge `Reports` into `Reporting` — 2026-06-12
+  - Moved & re-namespaced: `FinancialReportController`, `LedgerReportingService`, `BackfillLedgerCommand`
+  - Updated `routes/api.php` L78–79 FQCNs → `Reporting\Controllers\FinancialReportController`
+  - Updated `ModuleServiceProvider.php` BackfillLedgerCommand FQCN
+  - Deleted: `app/Modules/Reports/` (zero remaining refs verified)
+- [x] **Task 5.3**: Moved 12 debug/utility scripts from `server/` root → `server/scripts/` — 2026-06-12
+  - Scripts: `analyze_schema.php`, `dump_schema.php`, `run_unit_tests.php`, `e2e_seed/verify.php`, `test_*.php`, `rename_namespace.py`
+  - Data files: `*.json`, `*.txt` output artefacts
+  - `server/` root now contains only: `composer.json`, `artisan`, `phpunit.xml`, docker files, `README.md`
+- [x] **Task 5.4**: Centralized module bootstrapping in `ModuleServiceProvider` — 2026-06-12
+  - Rewrote with zero-hardcoding auto-discovery using Symfony Finder
+  - Commands: scans `**/Console/**Command.php`, derives FQCN from module namespace convention
+  - Verified: `php artisan list` shows `ledger:backfill` auto-discovered ✅
+  - `routes/api.php` already fully permission-based (no `role:xxx` remained)
 
 ---
 

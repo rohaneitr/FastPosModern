@@ -1,9 +1,9 @@
 <?php
 
-namespace Tests\Feature\Clinic;
+namespace Tests\Feature\Clinical;
 
 use Tests\TestCase;
-use App\Modules\Clinic\Services\MedicalReportEngine;
+use App\Modules\Clinical\Services\MedicalReportEngine;
 
 class DiagnosticReportCompilerTest extends TestCase
 {

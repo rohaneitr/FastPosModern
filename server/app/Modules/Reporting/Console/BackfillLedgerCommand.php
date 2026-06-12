@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Reports\Console;
+namespace App\Modules\Reporting\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;

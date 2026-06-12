@@ -75,8 +75,8 @@ Route::prefix('v1')->group(function () {
             // REPORTS — reports.manage (Admin + Accountant)
             // ================================================================
             Route::middleware(['permission:reports.manage', 'rbac.shadow:reports.manage'])->group(function () {
-                Route::get('/tenant/reports/profit-loss', [\App\Modules\Reports\Controllers\FinancialReportController::class, 'profitAndLoss']);
-                Route::get('/tenant/reports/valuation', [\App\Modules\Reports\Controllers\FinancialReportController::class, 'valuation']);
+                Route::get('/tenant/reports/profit-loss', [\App\Modules\Reporting\Controllers\FinancialReportController::class, 'profitAndLoss']);
+                Route::get('/tenant/reports/valuation', [\App\Modules\Reporting\Controllers\FinancialReportController::class, 'valuation']);
             });
 
             // ================================================================

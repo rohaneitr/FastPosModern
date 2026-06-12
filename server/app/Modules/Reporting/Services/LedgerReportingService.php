@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Reports\Services;
+namespace App\Modules\Reporting\Services;
 
 use Illuminate\Support\Facades\DB;
 

@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Modules\Reports\Controllers;
+namespace App\Modules\Reporting\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Modules\Reports\Services\LedgerReportingService;
+use App\Modules\Reporting\Services\LedgerReportingService;
 use Carbon\Carbon;
 
 class FinancialReportController extends Controller

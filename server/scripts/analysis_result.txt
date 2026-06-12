@@ -1,0 +1,1245 @@
+# Database Analysis
+
+## Entity-Relationship Diagram
+
+```mermaid
+erDiagram
+    clinical_patients {
+        bigint id
+        bigint business_id
+        charactervarying patient_uid
+        text first_name
+        text last_name
+        text mobile_number
+        text date_of_birth
+        text address
+        charactervarying gender
+        charactervarying blood_group
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        timestampwithouttimezone deleted_at
+    }
+    rbac_shadow_log {
+        bigint id
+        bigint user_id
+        charactervarying route
+        charactervarying permission_requested
+        charactervarying result
+        charactervarying source
+        charactervarying ip_address
+        charactervarying user_agent
+        timestampwithouttimezone logged_at
+    }
+    sessions {
+        charactervarying id
+        bigint user_id
+        charactervarying ip_address
+        text user_agent
+        text payload
+        integer last_activity
+    }
+    cache {
+        charactervarying key
+        text value
+        bigint expiration
+    }
+    cache_locks {
+        charactervarying key
+        charactervarying owner
+        bigint expiration
+    }
+    jobs {
+        bigint id
+        charactervarying queue
+        text payload
+        smallint attempts
+        integer reserved_at
+        integer available_at
+        integer created_at
+    }
+    job_batches {
+        charactervarying id
+        charactervarying name
+        integer total_jobs
+        integer pending_jobs
+        integer failed_jobs
+        text failed_job_ids
+        text options
+        integer cancelled_at
+        integer created_at
+        integer finished_at
+    }
+    permissions {
+        bigint id
+        charactervarying name
+        charactervarying guard_name
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    model_has_permissions {
+        bigint permission_id
+        charactervarying model_type
+        bigint model_id
+    }
+    roles {
+        bigint id
+        charactervarying name
+        charactervarying guard_name
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    model_has_roles {
+        bigint role_id
+        charactervarying model_type
+        bigint model_id
+    }
+    role_has_permissions {
+        bigint permission_id
+        bigint role_id
+    }
+    clinical_appointments {
+        bigint id
+        bigint business_id
+        bigint patient_id
+        bigint doctor_id
+        timestampwithouttimezone appointment_time
+        charactervarying status
+        text clinical_notes
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    clinical_lab_orders {
+        bigint id
+        bigint business_id
+        charactervarying order_number
+        bigint patient_id
+        bigint appointment_id
+        bigint product_id
+        charactervarying status
+        json parameters
+        text doctor_remarks
+        timestampwithouttimezone collected_at
+        timestampwithouttimezone completed_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    transactions {
+        bigint id
+        bigint business_id
+        bigint location_id
+        bigint created_by
+        charactervarying type
+        charactervarying status
+        boolean is_quotation
+        charactervarying invoice_no
+        timestampwithouttimezone transaction_date
+        numeric total_before_tax
+        numeric tax_amount
+        numeric discount_amount
+        numeric final_total
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        timestampwithouttimezone deleted_at
+        bigint contact_id
+        bigint commission_agent_id
+        bigint return_parent_id
+        charactervarying discount_type
+        integer version
+        charactervarying currency_code
+        numeric exchange_rate_used
+        charactervarying document_type
+        charactervarying sourcing_status
+        bigint cash_register_id
+        charactervarying idempotency_key
+    }
+    transaction_lines {
+        bigint id
+        bigint transaction_id
+        bigint product_id
+        bigint variation_id
+        numeric quantity
+        numeric unit_price_before_discount
+        numeric unit_price
+        numeric unit_price_inc_tax
+        numeric item_tax
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        numeric tax_rate
+        numeric tax_amount
+        charactervarying warranty_duration
+        bigint prescription_id
+        charactervarying dosage_instructions
+        charactervarying sourcing_status
+    }
+    variations {
+        bigint id
+        bigint product_id
+        charactervarying name
+        charactervarying sub_sku
+        numeric default_purchase_price
+        numeric sell_price_inc_tax
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        timestampwithouttimezone deleted_at
+    }
+    locations {
+        bigint id
+        bigint business_id
+        charactervarying name
+        charactervarying location_id
+        charactervarying city
+        charactervarying state
+        charactervarying country
+        charactervarying zip_code
+        boolean is_active
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        timestampwithouttimezone deleted_at
+    }
+    finance_journal_entries {
+        bigint id
+        bigint business_id
+        charactervarying reference_type
+        charactervarying reference_id
+        charactervarying description
+        date entry_date
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    product_stocks {
+        bigint id
+        bigint product_id
+        bigint variation_id
+        bigint location_id
+        numeric qty_available
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        date expiry_date
+        charactervarying lot_number
+    }
+    finance_journal_lines {
+        bigint id
+        bigint journal_entry_id
+        bigint account_id
+        charactervarying type
+        numeric amount
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    finance_accounts {
+        bigint id
+        bigint business_id
+        charactervarying code
+        charactervarying name
+        charactervarying type
+        boolean is_system
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    transaction_payments {
+        bigint id
+        bigint transaction_id
+        numeric amount
+        charactervarying method
+        charactervarying payment_ref_no
+        timestampwithouttimezone paid_on
+        bigint created_by
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    expense_categories {
+        bigint id
+        bigint business_id
+        charactervarying name
+        charactervarying code
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    expenses {
+        bigint id
+        bigint business_id
+        bigint location_id
+        bigint expense_category_id
+        bigint created_by
+        charactervarying reference_no
+        timestampwithouttimezone expense_date
+        numeric total_amount
+        text note
+        charactervarying payment_status
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    employees {
+        bigint id
+        bigint business_id
+        charactervarying employee_id
+        charactervarying first_name
+        charactervarying last_name
+        charactervarying email
+        charactervarying phone
+        charactervarying department
+        charactervarying designation
+        numeric basic_salary
+        date joining_date
+        boolean is_active
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        timestampwithouttimezone deleted_at
+    }
+    payrolls {
+        bigint id
+        bigint business_id
+        bigint employee_id
+        charactervarying reference_no
+        charactervarying month
+        numeric total_amount
+        charactervarying payment_status
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    tax_rates {
+        bigint id
+        bigint business_id
+        charactervarying name
+        numeric amount
+        boolean is_tax_group
+        bigint created_by
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        timestampwithouttimezone deleted_at
+    }
+    printers {
+        bigint id
+        bigint business_id
+        charactervarying name
+        charactervarying connection_type
+        charactervarying capability_profile
+        charactervarying char_per_line
+        charactervarying ip_address
+        charactervarying port
+        charactervarying path
+        bigint created_by
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    invoice_layouts {
+        bigint id
+        bigint business_id
+        charactervarying name
+        text header_text
+        charactervarying invoice_heading
+        charactervarying invoice_heading_not_paid
+        charactervarying invoice_heading_paid
+        text footer_text
+        boolean show_business_name
+        boolean show_location_name
+        boolean is_default
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    barcodes {
+        bigint id
+        bigint business_id
+        charactervarying name
+        charactervarying description
+        numeric width
+        numeric height
+        numeric paper_width
+        numeric paper_height
+        numeric top_margin
+        numeric left_margin
+        numeric row_distance
+        numeric col_distance
+        integer stickers_in_one_row
+        boolean is_default
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    subscription_modules {
+        bigint id
+        charactervarying slug
+        charactervarying name
+        numeric price_per_month
+        numeric price_per_year
+        boolean is_core
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    customer_groups {
+        bigint id
+        bigint business_id
+        charactervarying name
+        numeric amount
+        charactervarying price_calculation_type
+        bigint created_by
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    warranties {
+        bigint id
+        bigint business_id
+        charactervarying name
+        text description
+        integer duration
+        charactervarying duration_type
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    selling_price_groups {
+        bigint id
+        bigint business_id
+        charactervarying name
+        text description
+        boolean is_active
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    currencies {
+        bigint id
+        charactervarying code
+        charactervarying name
+        charactervarying symbol
+        charactervarying symbol_native
+        smallint decimal_digits
+        charactervarying name_bn
+        boolean is_active
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    exchange_rates {
+        bigint id
+        charactervarying base_currency
+        charactervarying target_currency
+        numeric rate
+        charactervarying source
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    user_activities {
+        bigint id
+        bigint user_id
+        charactervarying action
+        charactervarying ip_address
+        text user_agent
+        json details
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    users {
+        bigint id
+        charactervarying surname
+        charactervarying first_name
+        charactervarying last_name
+        charactervarying username
+        charactervarying email
+        timestampwithouttimezone email_verified_at
+        charactervarying password
+        character language
+        charactervarying user_type
+        boolean allow_login
+        json settings
+        charactervarying remember_token
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        bigint business_id
+        boolean is_cmmsn_agent
+        numeric cmmsn_percent
+        charactervarying phone
+        text address
+        charactervarying avatar
+        charactervarying timezone
+        boolean two_factor_enabled
+        json preferences
+        text two_factor_secret
+        text two_factor_recovery_codes
+        timestampwithouttimezone two_factor_confirmed_at
+    }
+    stock_adjustments {
+        bigint id
+        bigint product_id
+        bigint location_id
+        bigint adjusted_by
+        numeric quantity
+        numeric qty_before
+        numeric qty_after
+        charactervarying reason
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    stock_ledgers {
+        bigint id
+        bigint business_id
+        bigint product_id
+        charactervarying transaction_type
+        bigint transaction_id
+        numeric quantity
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    activity_log {
+        bigint id
+        bigint business_id
+        charactervarying log_name
+        text description
+        charactervarying subject_type
+        bigint subject_id
+        charactervarying event
+        charactervarying causer_type
+        bigint causer_id
+        json attribute_changes
+        json properties
+        uuid batch_uuid
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    builder_categories {
+        bigint id
+        charactervarying name
+        charactervarying slug
+        boolean is_core_component
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    commercial_quotations {
+        bigint id
+        bigint business_id
+        bigint contact_id
+        jsonb build_payload
+        numeric total_price
+        timestampwithouttimezone valid_until
+        charactervarying status
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    categories {
+        bigint id
+        bigint business_id
+        charactervarying name
+        text description
+        charactervarying status
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    tenant_invoices {
+        bigint id
+        bigint business_id
+        charactervarying invoice_number
+        charactervarying type
+        json requested_modules
+        numeric total_amount
+        charactervarying status
+        date billing_cycle_start
+        date billing_cycle_end
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    plans {
+        bigint id
+        charactervarying name
+        charactervarying stripe_price_id
+        numeric price
+        charactervarying currency_code
+        charactervarying interval
+        integer user_limit
+        integer location_limit
+        boolean is_active
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        json enabled_modules
+        integer device_limit
+    }
+    brands {
+        bigint id
+        bigint business_id
+        charactervarying name
+        text description
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    units {
+        bigint id
+        bigint business_id
+        charactervarying name
+        charactervarying short_name
+        boolean allow_decimal
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    products {
+        bigint id
+        bigint business_id
+        charactervarying name
+        charactervarying sku
+        charactervarying barcode_type
+        bigint category_id
+        bigint brand_id
+        bigint unit_id
+        numeric purchase_price
+        numeric selling_price
+        integer alert_quantity
+        numeric current_stock
+        boolean is_active
+        charactervarying image_path
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        boolean is_serialized
+        integer warranty_months
+        charactervarying type
+    }
+    contacts {
+        bigint id
+        bigint business_id
+        charactervarying type
+        charactervarying name
+        charactervarying phone
+        charactervarying email
+        text address
+        boolean is_active
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        charactervarying customer_status
+    }
+    global_settings {
+        bigint id
+        charactervarying key
+        text value
+        charactervarying group
+        boolean is_encrypted
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    inventory_item_serials {
+        bigint id
+        bigint business_id
+        bigint product_id
+        bigint transaction_sell_line_id
+        charactervarying serial_number
+        charactervarying status
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    restaurant_tables {
+        bigint id
+        bigint business_id
+        charactervarying table_number
+        integer seating_capacity
+        charactervarying status
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    businesses {
+        bigint id
+        charactervarying name
+        bigint owner_id
+        date start_date
+        charactervarying time_zone
+        charactervarying currency_code
+        charactervarying logo
+        charactervarying tax_number_1
+        charactervarying tax_label_1
+        charactervarying tax_number_2
+        charactervarying tax_label_2
+        json settings
+        boolean is_active
+        timestampwithouttimezone subscription_expires_at
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        charactervarying language
+        charactervarying currency_symbol_position
+        smallint currency_decimal_precision
+        charactervarying currency_thousands_separator
+        charactervarying currency_decimal_separator
+        charactervarying stripe_customer_id
+        json branding
+        charactervarying subdomain
+        charactervarying status
+        charactervarying license_key
+        timestampwithouttimezone trial_ends_at
+        jsonb active_modules
+        date billing_due_date
+        charactervarying subscription_status
+    }
+    restaurant_sessions {
+        bigint id
+        bigint business_id
+        bigint table_id
+        bigint waiter_id
+        charactervarying status
+        timestampwithouttimezone started_at
+        timestampwithouttimezone ended_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    supplier_ledgers {
+        bigint id
+        bigint business_id
+        bigint contact_id
+        bigint purchase_id
+        numeric amount
+        charactervarying type
+        text description
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    restaurant_kot_tickets {
+        bigint id
+        bigint session_id
+        charactervarying ticket_number
+        charactervarying status
+        jsonb item_payload
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    purchases {
+        bigint id
+        bigint business_id
+        bigint contact_id
+        charactervarying reference_no
+        date purchase_date
+        charactervarying status
+        numeric grand_total
+        text note
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        numeric total_before_tax
+        numeric tax_amount
+        numeric discount_amount
+        charactervarying discount_type
+        numeric shipping_charges
+        numeric amount_due
+        charactervarying payment_status
+    }
+    email_logs {
+        bigint id
+        bigint business_id
+        charactervarying to_email
+        charactervarying subject
+        charactervarying mailable_class
+        charactervarying status
+        text error_message
+        timestampwithouttimezone sent_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    purchase_lines {
+        bigint id
+        bigint purchase_id
+        bigint product_id
+        numeric quantity
+        numeric purchase_price
+        numeric sub_total
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        numeric item_tax
+    }
+    chart_of_accounts {
+        bigint id
+        bigint business_id
+        charactervarying code
+        charactervarying name
+        charactervarying type
+        boolean is_active
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    journal_entries {
+        bigint id
+        bigint business_id
+        bigint reference_id
+        charactervarying reference_type
+        charactervarying reference_number
+        date date
+        text narration
+        bigint created_by
+        timestampwithouttimezone deleted_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    loyalty_point_ledgers {
+        bigint id
+        bigint business_id
+        bigint contact_id
+        bigint transaction_id
+        integer points_earned
+        integer points_redeemed
+        integer running_balance
+        charactervarying description
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    import_statuses {
+        bigint id
+        bigint business_id
+        charactervarying type
+        charactervarying status
+        integer total_rows
+        integer processed_rows
+        integer successful_rows
+        integer failed_rows
+        json errors
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    cash_registers {
+        bigint id
+        bigint business_id
+        charactervarying device_hash
+        bigint opened_by_user_id
+        charactervarying status
+        numeric opening_balance
+        numeric closing_balance_expected
+        numeric closing_balance_counted
+        numeric discrepancy_amount
+        timestampwithouttimezone closed_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    journal_lines {
+        bigint id
+        bigint journal_entry_id
+        bigint chart_of_account_id
+        charactervarying type
+        numeric amount
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        charactervarying currency_code
+        numeric exchange_rate_used
+    }
+    currency_rates {
+        bigint id
+        bigint business_id
+        charactervarying code
+        boolean is_base
+        numeric rate_to_base_currency
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        timestampwithouttimezone deleted_at
+    }
+    customer_wallets {
+        bigint id
+        bigint business_id
+        bigint contact_id
+        numeric balance
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    transaction_item_serials {
+        bigint id
+        bigint transaction_item_id
+        charactervarying serial_number
+        charactervarying imei_number
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    tenant_modules {
+        bigint id
+        bigint business_id
+        bigint module_id
+        boolean is_active
+        timestampwithouttimezone expires_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    inventory_layers {
+        bigint id
+        bigint business_id
+        bigint product_id
+        bigint purchase_line_id
+        numeric original_qty
+        numeric remaining_qty
+        numeric unit_cost
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        date expiry_date
+        charactervarying lot_number
+    }
+    production_orders {
+        bigint id
+        bigint business_id
+        charactervarying reference_no
+        bigint finished_product_id
+        numeric quantity_planned
+        numeric quantity_produced
+        numeric overhead_cost
+        numeric final_unit_cost
+        charactervarying status
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    student_batches {
+        bigint id
+        bigint business_id
+        charactervarying name
+        charactervarying academic_year
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    student_enrollments {
+        bigint id
+        bigint business_id
+        bigint student_id
+        bigint batch_id
+        numeric monthly_fee
+        charactervarying status
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    student_invoices {
+        bigint id
+        bigint business_id
+        bigint student_id
+        bigint transaction_id
+        integer billing_month
+        integer billing_year
+        charactervarying fee_type
+        numeric amount
+        charactervarying status
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    exam_schedules {
+        bigint id
+        bigint business_id
+        bigint batch_id
+        charactervarying exam_title
+        date exam_date
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    exam_results {
+        bigint id
+        bigint business_id
+        bigint exam_id
+        bigint student_id
+        jsonb marks_payload
+        numeric cumulative_gpa
+        charactervarying grade_letter
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    production_order_lines {
+        bigint id
+        bigint production_order_id
+        bigint raw_material_id
+        numeric quantity_required
+        numeric quantity_consumed
+        numeric accumulated_cost
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    production_scrap_logs {
+        bigint id
+        bigint production_order_id
+        bigint raw_material_id
+        numeric expected_wastage_qty
+        numeric actual_scrapped_qty
+        numeric scrapped_financial_value
+        charactervarying variance_reason
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    saas_subscriptions {
+        bigint id
+        bigint business_id
+        charactervarying plan_id
+        charactervarying status
+        timestampwithouttimezone valid_until
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    saas_payment_ledgers {
+        bigint id
+        bigint business_id
+        charactervarying transaction_id
+        numeric amount
+        charactervarying payment_method
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    user_devices {
+        bigint id
+        bigint user_id
+        charactervarying device_name
+        charactervarying os
+        charactervarying browser
+        charactervarying ip_address
+        timestampwithouttimezone last_login
+        charactervarying status
+        charactervarying session_type
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    team_invitations {
+        bigint id
+        bigint business_id
+        charactervarying email
+        charactervarying role
+        charactervarying token
+        timestampwithouttimezone expires_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    medicines_meta {
+        bigint id
+        bigint product_id
+        charactervarying generic_name
+        charactervarying strength
+        charactervarying dosage_form
+        boolean is_rx_required
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    prescriptions {
+        bigint id
+        bigint business_id
+        bigint transaction_id
+        charactervarying doctor_name
+        charactervarying patient_id
+        charactervarying file_path
+        text notes
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    hardware_specs {
+        bigint id
+        bigint product_id
+        charactervarying component_type
+        charactervarying socket_type
+        charactervarying memory_type
+        charactervarying form_factor
+        integer wattage
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    product_assemblies {
+        bigint id
+        bigint parent_product_id
+        bigint child_product_id
+        numeric quantity
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    stock_history {
+        bigint id
+        bigint business_id
+        bigint product_id
+        numeric quantity_changed
+        charactervarying transaction_type
+        charactervarying reference
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    tickets {
+        bigint id
+        bigint business_id
+        bigint user_id
+        charactervarying subject
+        charactervarying status
+        charactervarying priority
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    ticket_replies {
+        bigint id
+        bigint ticket_id
+        bigint user_id
+        text message
+        boolean is_admin_reply
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    tenant_requests {
+        bigint id
+        charactervarying business_name
+        charactervarying applicant_name
+        charactervarying applicant_email
+        bigint plan_id
+        charactervarying status
+        text rejection_reason
+        bigint tenant_id
+        bigint reviewed_by
+        timestampwithouttimezone reviewed_at
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+    }
+    modules {
+        bigint id
+        charactervarying name
+        charactervarying slug
+        charactervarying description
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        charactervarying category
+    }
+    subscriptions {
+        bigint id
+        bigint business_id
+        bigint plan_id
+        charactervarying status
+        timestampwithouttimezone trial_ends_at
+        timestampwithouttimezone current_period_start
+        timestampwithouttimezone current_period_end
+        charactervarying stripe_id
+        charactervarying stripe_customer_id
+        timestampwithouttimezone created_at
+        timestampwithouttimezone updated_at
+        charactervarying stripe_subscription_id
+        json limit_overrides
+        json module_overrides
+    }
+    audit_logs {
+        bigint id
+        bigint business_id
+        bigint user_id
+        charactervarying event
+        charactervarying auditable_type
+        bigint auditable_id
+        json old_values
+        json new_values
+        charactervarying ip_address
+        charactervarying user_agent
+        timestampwithouttimezone created_at
+        bigint impersonator_id
+        charactervarying checksum
+    }
+    permissions ||--o{ model_has_permissions : "permission_id"
+    roles ||--o{ model_has_roles : "role_id"
+    permissions ||--o{ role_has_permissions : "permission_id"
+    roles ||--o{ role_has_permissions : "role_id"
+    clinical_patients ||--o{ clinical_appointments : "patient_id"
+    clinical_patients ||--o{ clinical_lab_orders : "patient_id"
+    clinical_appointments ||--o{ clinical_lab_orders : "appointment_id"
+    cash_registers ||--o{ transactions : "cash_register_id"
+    businesses ||--o{ transactions : "business_id"
+    locations ||--o{ transactions : "location_id"
+    users ||--o{ transactions : "created_by"
+    users ||--o{ transactions : "commission_agent_id"
+    transactions ||--o{ transactions : "return_parent_id"
+    transactions ||--o{ transaction_lines : "transaction_id"
+    variations ||--o{ transaction_lines : "variation_id"
+    prescriptions ||--o{ transaction_lines : "prescription_id"
+    businesses ||--o{ locations : "business_id"
+    variations ||--o{ product_stocks : "variation_id"
+    locations ||--o{ product_stocks : "location_id"
+    finance_journal_entries ||--o{ finance_journal_lines : "journal_entry_id"
+    finance_accounts ||--o{ finance_journal_lines : "account_id"
+    transactions ||--o{ transaction_payments : "transaction_id"
+    users ||--o{ transaction_payments : "created_by"
+    businesses ||--o{ expense_categories : "business_id"
+    businesses ||--o{ expenses : "business_id"
+    locations ||--o{ expenses : "location_id"
+    expense_categories ||--o{ expenses : "expense_category_id"
+    users ||--o{ expenses : "created_by"
+    businesses ||--o{ employees : "business_id"
+    businesses ||--o{ payrolls : "business_id"
+    employees ||--o{ payrolls : "employee_id"
+    businesses ||--o{ tax_rates : "business_id"
+    users ||--o{ tax_rates : "created_by"
+    businesses ||--o{ printers : "business_id"
+    users ||--o{ printers : "created_by"
+    businesses ||--o{ invoice_layouts : "business_id"
+    businesses ||--o{ barcodes : "business_id"
+    businesses ||--o{ customer_groups : "business_id"
+    users ||--o{ customer_groups : "created_by"
+    businesses ||--o{ warranties : "business_id"
+    businesses ||--o{ selling_price_groups : "business_id"
+    users ||--o{ user_activities : "user_id"
+    businesses ||--o{ users : "business_id"
+    locations ||--o{ stock_adjustments : "location_id"
+    users ||--o{ stock_adjustments : "adjusted_by"
+    businesses ||--o{ stock_ledgers : "business_id"
+    businesses ||--o{ activity_log : "business_id"
+    businesses ||--o{ commercial_quotations : "business_id"
+    businesses ||--o{ categories : "business_id"
+    businesses ||--o{ brands : "business_id"
+    businesses ||--o{ units : "business_id"
+    businesses ||--o{ products : "business_id"
+    categories ||--o{ products : "category_id"
+    brands ||--o{ products : "brand_id"
+    units ||--o{ products : "unit_id"
+    businesses ||--o{ contacts : "business_id"
+    businesses ||--o{ inventory_item_serials : "business_id"
+    products ||--o{ inventory_item_serials : "product_id"
+    businesses ||--o{ restaurant_tables : "business_id"
+    users ||--o{ businesses : "owner_id"
+    businesses ||--o{ restaurant_sessions : "business_id"
+    restaurant_tables ||--o{ restaurant_sessions : "table_id"
+    businesses ||--o{ supplier_ledgers : "business_id"
+    contacts ||--o{ supplier_ledgers : "contact_id"
+    purchases ||--o{ supplier_ledgers : "purchase_id"
+    restaurant_sessions ||--o{ restaurant_kot_tickets : "session_id"
+    businesses ||--o{ purchases : "business_id"
+    contacts ||--o{ purchases : "contact_id"
+    purchases ||--o{ purchase_lines : "purchase_id"
+    products ||--o{ purchase_lines : "product_id"
+    businesses ||--o{ chart_of_accounts : "business_id"
+    businesses ||--o{ journal_entries : "business_id"
+    users ||--o{ journal_entries : "created_by"
+    businesses ||--o{ loyalty_point_ledgers : "business_id"
+    contacts ||--o{ loyalty_point_ledgers : "contact_id"
+    transactions ||--o{ loyalty_point_ledgers : "transaction_id"
+    businesses ||--o{ import_statuses : "business_id"
+    businesses ||--o{ cash_registers : "business_id"
+    users ||--o{ cash_registers : "opened_by_user_id"
+    journal_entries ||--o{ journal_lines : "journal_entry_id"
+    chart_of_accounts ||--o{ journal_lines : "chart_of_account_id"
+    businesses ||--o{ currency_rates : "business_id"
+    businesses ||--o{ customer_wallets : "business_id"
+    contacts ||--o{ customer_wallets : "contact_id"
+    transaction_lines ||--o{ transaction_item_serials : "transaction_item_id"
+    businesses ||--o{ tenant_modules : "business_id"
+    modules ||--o{ tenant_modules : "module_id"
+    businesses ||--o{ inventory_layers : "business_id"
+    products ||--o{ inventory_layers : "product_id"
+    businesses ||--o{ production_orders : "business_id"
+    products ||--o{ production_orders : "finished_product_id"
+    businesses ||--o{ student_batches : "business_id"
+    businesses ||--o{ student_enrollments : "business_id"
+    contacts ||--o{ student_enrollments : "student_id"
+    student_batches ||--o{ student_enrollments : "batch_id"
+    businesses ||--o{ student_invoices : "business_id"
+    contacts ||--o{ student_invoices : "student_id"
+    transactions ||--o{ student_invoices : "transaction_id"
+    businesses ||--o{ exam_schedules : "business_id"
+    student_batches ||--o{ exam_schedules : "batch_id"
+    businesses ||--o{ exam_results : "business_id"
+    exam_schedules ||--o{ exam_results : "exam_id"
+    contacts ||--o{ exam_results : "student_id"
+    production_orders ||--o{ production_order_lines : "production_order_id"
+    products ||--o{ production_order_lines : "raw_material_id"
+    production_orders ||--o{ production_scrap_logs : "production_order_id"
+    products ||--o{ production_scrap_logs : "raw_material_id"
+    businesses ||--o{ saas_subscriptions : "business_id"
+    businesses ||--o{ saas_payment_ledgers : "business_id"
+    users ||--o{ user_devices : "user_id"
+    businesses ||--o{ team_invitations : "business_id"
+    products ||--o{ medicines_meta : "product_id"
+    businesses ||--o{ prescriptions : "business_id"
+    transactions ||--o{ prescriptions : "transaction_id"
+    products ||--o{ hardware_specs : "product_id"
+    products ||--o{ product_assemblies : "parent_product_id"
+    products ||--o{ product_assemblies : "child_product_id"
+    tickets ||--o{ ticket_replies : "ticket_id"
+    plans ||--o{ tenant_requests : "plan_id"
+    businesses ||--o{ tenant_requests : "tenant_id"
+    users ||--o{ tenant_requests : "reviewed_by"
+    businesses ||--o{ subscriptions : "business_id"
+    plans ||--o{ subscriptions : "plan_id"
+    users ||--o{ audit_logs : "impersonator_id"
+```
+
+## Multi-tenancy Audit
+
+The following core tables are missing a `business_id` (or `tenant_id` / `company_id`) column:
+- **transaction_lines**

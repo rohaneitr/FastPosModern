@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Clinic\Services;
+namespace App\Modules\Clinical\Services;
 
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
