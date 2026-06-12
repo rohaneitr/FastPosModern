@@ -113,41 +113,43 @@ fastpos_redis_prod     → Redis 7              → Cache/Queue/Sessions
 
 ## 4. BACKEND MODULE ARCHITECTURE
 
-### Module List (26 Modules under `server/app/Modules/`)
+### Module List (24 Modules under `server/app/Modules/`) — Phase 5 Updated: 2026-06-12
 
 | Module | Responsibility | Status |
 |---|---|---|
 | **IAM** | Identity & Access Management, Auth, User management | ✅ Active |
-| **Tenant** | Business provisioning, Subscriptions, Licensing, Settings | ✅ Active |
-| **SuperAdmin** | Platform-level SaaS management, oversight | ✅ Active |
-| **Catalog** | Products, Variants, Product transfer | ✅ Active |
-| **Inventory** | Stock management, Adjustments, Layers (FIFO/FEFO) | ✅ Active |
-| **Sales** | POS Checkout, Transactions, Cash Registers | ✅ Active |
-| **Procurement** | Purchase Orders, Supplier management | ✅ Active |
-| **CRM** | Contacts (Customers/Suppliers), Customer Groups | ✅ Active |
-| **Finance** | General Ledger, Journal Entries, Expenses | ✅ Active |
-| **Reports** | Financial Reports (P&L, Balance Sheet, Valuation) | ✅ Active |
-| **Reporting** | Additional reporting endpoints | ✅ Active |
-| **HR** | Employees, Payroll management | ✅ Active |
-| **Imports** | CSV/Parquet bulk data import with job queue | ✅ Active |
-| **Audit** | Forensic audit log, immutable checksum trail | ✅ Active |
-| **SerialCore** | Serial number / IMEI tracking for products | ✅ Active |
-| **Restaurant** | KOT tickets, Table management, Sessions | ✅ Active |
-| **Pharmacy** | Rx prescription tracking, medicine metadata | ✅ Active |
-| **Clinical** | Patient management, Appointments, Lab orders | ✅ Active |
-| **Clinic** | (Legacy/transitioning) Clinical services | ⚠️ Review |
-| **Manufacturing** | Production orders, BOM, Scrap tracking | ✅ Active |
-| **HardwareBuilder** | PC component assembly & quotation builder | ✅ Active |
-| **Education** | Student management, Batches, Exams, Invoices | ✅ Active |
-| **Security** | Security service helpers | ✅ Active |
-| **Shared** | Shared events used cross-module | ✅ Active |
+| **Tenant** | Business provisioning, Subscriptions, Licensing, Settings, Sync | ✅ Active |
+| **SuperAdmin** | Platform-level SaaS management, oversight, impersonation | ✅ Active |
+| **Catalog** | Products, Variants, Categories, Brands, Units | ✅ Active |
+| **Inventory** | Stock management, WAC Costing, Location Stocks, FIFO/FEFO | ✅ Active |
+| **Sales** | POS Checkout, Transactions, Cash Registers, Offline Sync | ✅ Active |
+| **Procurement** | Purchase Orders, Supplier management, Goods Receiving | ✅ Active |
+| **CRM** | Contacts (Customers/Suppliers), Ledger per Contact | ✅ Active |
+| **Finance** | Double-Entry Ledger, Journal Entries, Chart of Accounts | ✅ Active |
+| **Reporting** | P&L, Inventory Valuation, KPI Dashboard, Invoice Export, `ledger:backfill` | ✅ Active |
+| **HR** | Staff Invitations, Employee management | ✅ Active |
+| **Imports** | CSV/Excel bulk import with job queue | ✅ Active |
+| **Audit** | Forensic audit log, immutable SHA-256 checksum trail | ✅ Active |
+| **SerialCore** | Serial number / IMEI tracking, Warranty management | ✅ Active |
+| **Restaurant** | KDS (Kitchen Display System), Table management | ✅ Active |
+| **Pharmacy** | Drug dispensing, Prescription management | ✅ Active |
+| **Clinical** | Patient management, Lab Reports (Pathology/Radiology), QR-signed PDF | ✅ Active |
+| **Manufacturing** | Bill of Materials, Production runs, Scrap tracking | ✅ Active |
+| **HardwareBuilder** | CCTV/PC component assembly & quotation builder | ✅ Active |
+| **Education** | Student management, Batches, Exams (stub) | ✅ Active |
+| **Security** | `RbacShadowLogger` middleware, audit helpers | ✅ Active |
+| **Shared** | Shared events, DTOs, traits used cross-module | ✅ Active |
 | **Kernel** | Module dependency manifest validator | ✅ Active |
-| **Auth** | (Legacy auth controllers) | ⚠️ Review |
+| **Auth** | Legacy auth controllers (under review) | ⚠️ Review |
+
+> **Phase 5 Note:** `Clinic` module merged into `Clinical` (2026-06-12). `Reports` module merged into `Reporting` (2026-06-12). Both source directories deleted.
 
 ### Module Loading Mechanism
-- Modules auto-loaded by `ModuleServiceProvider`
-- Each module can have: `Routes/api.php`, `Database/Migrations/`, `module.json`
-- Routes prefixed at `api/v1` automatically
+- Modules auto-loaded by `ModuleServiceProvider` (Phase 5 rewrite — zero hardcoding)
+- **Auto-discovery:** Symfony Finder scans each module's `Console/**Command.php` → FQCN derived from path
+- Each module can have: `Routes/api.php`, `Routes/web.php`, `Database/Migrations/`, `Console/**Command.php`
+- Routes prefixed at `api/v1` automatically via `ModuleServiceProvider::loadModuleRoutes()`
+- **Adding a new module:** Create `app/Modules/{Name}/` directory — zero changes to any provider
 
 ---
 
