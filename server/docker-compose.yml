@@ -4,10 +4,6 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: fastpos_backend
-    volumes:
-      # IMPORTANT: mount only the SQLite file location, NOT the database/ dir.
-      # This preserves migrations/ and seeders/ from the image.
-      - sqlite_data:/var/db
     ports:
       - "8002:8000"
     environment:
@@ -16,18 +12,52 @@ services:
       APP_DEBUG: "true"
       APP_KEY: base64:Zaf2VcM0qSQF7WQ48oCUtbgFIYtd8JBGn97RBFI9xo4=
       APP_URL: http://localhost:8000
-      DB_CONNECTION: sqlite
-      # SQLite file lives in the named volume at /var/db, NOT inside database/
-      DB_DATABASE: /var/db/database.sqlite
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: fastpos
+      DB_USERNAME: fastpos_user
+      DB_PASSWORD: password123
       FRONTEND_URL: http://localhost:3000
-      SANCTUM_STATEFUL_DOMAINS: "localhost:3000,127.0.0.1:3000"
+      SANCTUM_STATEFUL_DOMAINS: "localhost,localhost:3000,admin.localhost:3000,tech.localhost:3000,pharma.localhost:3000,admin.localhost,tech.localhost,pharma.localhost,127.0.0.1,127.0.0.1:3000"
       SESSION_DRIVER: database
       SESSION_LIFETIME: "120"
-      SESSION_DOMAIN: localhost
-      CACHE_STORE: database
-      QUEUE_CONNECTION: database
+      SESSION_DOMAIN: ".localhost"
+      SESSION_COOKIE: "fastpos_session"
+      SESSION_SECURE_COOKIE: "false"
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      REDIS_HOST: redis
+      REDIS_CLIENT: predis
       LOG_CHANNEL: stack
       LOG_LEVEL: debug
+      LICENSE_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg9PJbuI+pbljRNMTy\nvzomd/GnsLKEkQI3S/ySchgT7YahRANCAAQDHEsDeZHOLDIEEAWnEsjF+F76QFgP\nwWBxvW9G36UqaZqLO9X/aGjbGpYCHdT3HbCCGORIAfufy1A85Ud7nEJ6\n-----END PRIVATE KEY-----"
+      LICENSE_PUBLIC_KEY: "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAxxLA3mRziwyBBAFpxLIxfhe+kBY\nD8Fgcb1vRt+lKmmaizvV/2ho2xqWAh3U9x2wghjkSAH7n8tQPOVHe5xCeg==\n-----END PUBLIC KEY-----"
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: fastpos_postgres
+    environment:
+      POSTGRES_DB: fastpos
+      POSTGRES_USER: fastpos_user
+      POSTGRES_PASSWORD: password123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgsql_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: fastpos_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
     restart: unless-stopped
 
   frontend:
@@ -47,4 +77,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  sqlite_data:
+  pgsql_data:
+  redis_data:

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import ImpersonationGuard from '@/features/iam/components/ImpersonationGuard';
 
 // Maps role names to their allowed route prefixes
 const ROLE_ROUTE_MAP: Record<string, string[]> = {
@@ -30,12 +31,14 @@ export default function DashboardsLayout({ children }: { children: React.ReactNo
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('fastpos_token');
-    const userJson = localStorage.getItem('fastpos_user');
+    const token = sessionStorage.getItem('fastpos_token') || localStorage.getItem('fastpos_token');
+    const userJson = sessionStorage.getItem('fastpos_user') || localStorage.getItem('fastpos_user');
 
     if (!token || !userJson) {
       localStorage.removeItem('fastpos_token');
       localStorage.removeItem('fastpos_user');
+      sessionStorage.removeItem('fastpos_token');
+      sessionStorage.removeItem('fastpos_user');
       router.replace('/login');
       return;
     }
@@ -49,9 +52,14 @@ export default function DashboardsLayout({ children }: { children: React.ReactNo
       const isAllowed = allowedPrefixes.some(prefix => pathname.startsWith(prefix));
 
       if (!isAllowed) {
-        // Redirect to their own dashboard instead of kicking to login
-        const home = ROLE_HOME_MAP[primaryRole] || '/login';
-        router.replace(home);
+        // Role does not match the requested domain scope.
+        // E.g., BusinessAdmin accessing /superadmin on root domain.
+        // We must clear the session to prevent 404s and infinite loops.
+        localStorage.removeItem('fastpos_token');
+        localStorage.removeItem('fastpos_user');
+        sessionStorage.removeItem('fastpos_token');
+        sessionStorage.removeItem('fastpos_user');
+        router.replace('/login');
         return;
       }
 
@@ -59,6 +67,8 @@ export default function DashboardsLayout({ children }: { children: React.ReactNo
     } catch {
       localStorage.removeItem('fastpos_token');
       localStorage.removeItem('fastpos_user');
+      sessionStorage.removeItem('fastpos_token');
+      sessionStorage.removeItem('fastpos_user');
       router.replace('/login');
     }
   }, [router, pathname]);
@@ -75,5 +85,10 @@ export default function DashboardsLayout({ children }: { children: React.ReactNo
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <ImpersonationGuard />
+      {children}
+    </>
+  );
 }

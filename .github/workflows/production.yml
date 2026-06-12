@@ -1,0 +1,119 @@
+name: Production CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: fastpos_testing
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, bcmath, curl, pgsql, redis
+          coverage: none
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'client/package-lock.json'
+
+      - name: Install Backend Dependencies
+        working-directory: ./server
+        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+      - name: Prepare Laravel Environment
+        working-directory: ./server
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=pgsql/' .env
+          sed -i 's/DB_DATABASE=laravel/DB_DATABASE=fastpos_testing/' .env
+          sed -i 's/DB_USERNAME=root/DB_USERNAME=root/' .env
+          sed -i 's/DB_PASSWORD=/DB_PASSWORD=password/' .env
+          php artisan migrate --force
+
+      - name: Run Backend Tests (Pest/PHPUnit)
+        working-directory: ./server
+        run: php artisan test
+
+      - name: Install Frontend Dependencies
+        working-directory: ./client
+        run: npm ci
+
+      - name: Next.js Production Build Test
+        working-directory: ./client
+        run: npm run build
+
+      - name: Install Playwright Browsers
+        working-directory: ./client
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright E2E Smoke Test
+        working-directory: ./client
+        run: npx playwright test tests/e2e/pos-checkout.spec.ts
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Deploy to Production via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            cd /var/www/fastpos
+            git pull origin main
+            
+            # Start/rebuild containers in detached mode (Zero downtime build process)
+            docker-compose -f docker-compose.prod.yml build
+            docker-compose -f docker-compose.prod.yml up -d
+            
+            # Safely execute migrations inside the running backend container
+            docker exec fastpos_backend_prod php artisan migrate --force
+            
+            # Clear caches and optimize for performance
+            docker exec fastpos_backend_prod php artisan optimize:clear
+            docker exec fastpos_backend_prod php artisan config:cache
+            docker exec fastpos_backend_prod php artisan route:cache
+            docker exec fastpos_backend_prod php artisan view:cache
+            
+            # Restart queue worker gracefully to pick up new code
+            docker exec fastpos_queue_prod php artisan queue:restart

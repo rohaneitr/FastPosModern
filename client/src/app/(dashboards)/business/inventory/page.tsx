@@ -1,376 +1,350 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import api from '@/lib/api';
+import React, { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import useSWR from "swr";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { AlertTriangle, ArrowRightLeft, Package, Search, Plus, Loader2, X } from "lucide-react";
+import toast from "react-hot-toast";
+import clsx from "clsx";
+import api from "@/lib/api";
+
+const fetcher = (url: string) => api.get(url).then((res) => res.data);
+
+// Validation Schema
+const transferSchema = z.object({
+  product_id: z.number({ message: "Product is required" }).min(1, "Select a product"),
+  from_location_id: z.number({ message: "Source branch is required" }).min(1, "Select source"),
+  to_location_id: z.number({ message: "Destination branch is required" }).min(1, "Select destination"),
+  quantity: z.number({ message: "Quantity is required" })
+    .positive("Quantity must be greater than 0")
+    .min(0.01, "Minimum transfer amount is 0.01"),
+  note: z.string().optional(),
+}).refine((data) => data.from_location_id !== data.to_location_id, {
+  message: "Source and destination cannot be the same branch",
+  path: ["to_location_id"],
+});
+
+type TransferFormValues = z.infer<typeof transferSchema>;
+
+// Types
+interface Location {
+  id: number;
+  name: string;
+}
+
+interface ProductStock {
+  id: number;
+  name: string;
+  sku: string;
+  category: { name: string } | null;
+  stock_quantity: number;
+  location_id: number;
+  location_name: string;
+}
 
 export default function InventoryPage() {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [stocks, setStocks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  const initialSearch = searchParams.get('inv_search') || "";
+  const initialPage = parseInt(searchParams.get('inv_page') || "1", 10);
 
-  // Adjustment & Transfer States
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalType, setModalType] = useState<'adjust' | 'transfer' | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
-
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [currentPage, setCurrentPage] = useState(initialPage);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  
+  // URL Debounce Sync
   useEffect(() => {
-    fetchStock();
-  }, []);
+    const delayDebounceFn = setTimeout(() => {
+      const params = new URLSearchParams();
+      if (searchTerm) params.set('inv_search', searchTerm);
+      params.set('inv_page', currentPage.toString());
+      router.replace(`?${params.toString()}`);
+    }, 400);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, currentPage, router]);
 
-  const fetchStock = async () => {
-    setLoading(true);
+  // Hooks
+  const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : '';
+  const { data: inventoryData, isLoading, mutate } = useSWR(
+    `/tenant/inventory?per_page=50&page=${currentPage}${searchParam}`,
+    fetcher,
+    { revalidateOnFocus: false, keepPreviousData: true }
+  );
+
+  const { data: locationsData } = useSWR('/tenant/locations', fetcher);
+
+  const products: ProductStock[] = inventoryData?.data || [];
+  const locations: Location[] = locationsData?.data || [];
+
+  // Transfer Form Setup
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<TransferFormValues>({
+    resolver: zodResolver(transferSchema),
+    defaultValues: {
+      product_id: 0,
+      from_location_id: 0,
+      to_location_id: 0,
+      quantity: 0,
+      note: '',
+    }
+  });
+
+  const onTransferSubmit = async (data: TransferFormValues) => {
     try {
-      const res = await api.get('/inventory/stock');
-      if (res.data && res.data.data) {
-        setStocks(res.data.data);
-      }
-    } catch (err) {
-      console.warn("Failed to fetch stock", err);
-      // Fallback Mock Data
-      setStocks([
-        { id: 1, product_name: 'Premium Espresso Machine', sku: 'ES-100', location_name: 'Main Store', qty_available: '45.00' },
-        { id: 2, product_name: 'Artisan Coffee Blend', sku: 'CB-200', location_name: 'Warehouse B', qty_available: '8.00' },
-        { id: 3, product_name: 'Barista Starter Kit', sku: 'BK-300', location_name: 'Main Store', qty_available: '0.00' },
-        { id: 4, product_name: 'Coffee Grinder Pro', sku: 'CG-400', location_name: 'Warehouse A', qty_available: '120.00' },
-      ]);
-    } finally {
-      setLoading(false);
+      await api.post('/tenant/inventory/transfer', data);
+      toast.success("Stock transferred successfully");
+      setIsTransferModalOpen(false);
+      reset();
+      mutate(); // Revalidate grid
+    } catch (err: unknown) {
+      const errorObj = err as Record<string, any>;
+      const errorMessage = errorObj.response?.data?.error || errorObj.response?.data?.message || "Transfer failed due to a server error.";
+      toast.error(errorMessage);
     }
   };
 
-  const handleOpenModal = (type: 'adjust' | 'transfer', product: any = null) => {
-    setModalType(type);
-    setSelectedProduct(product);
-    setIsModalOpen(true);
-  };
-
-  const tabs = [
-    { id: 'overview', label: 'Stock Overview' },
-    { id: 'adjustments', label: 'Stock Adjustments' },
-    { id: 'transfers', label: 'Stock Transfers' },
-  ];
-
-  const filteredStocks = stocks.filter(s => 
-    s.product_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    s.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const lowStockThreshold = 10;
 
   return (
-    <div className="flex flex-col h-full gap-8 animate-in fade-in duration-500 pb-12">
-      <div className="flex justify-between items-center">
+    <div className="p-6 max-w-7xl mx-auto text-slate-900">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-500">
-            Inventory Management
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <Package className="w-6 h-6 text-indigo-600" />
+            Inventory Master
           </h1>
-          <p className="text-text-muted mt-1">Track real-time stock levels, adjust discrepancies, and transfer inventory.</p>
+          <p className="text-slate-500 text-sm mt-1">Manage stock across all locations.</p>
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => handleOpenModal('transfer')} className="bg-surface border border-border hover:bg-white/5 text-white px-6 py-2 rounded-lg font-medium transition-colors">
-            + Transfer Stock
-          </button>
-          <button onClick={() => handleOpenModal('adjust')} className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-lg shadow-lg shadow-emerald-500/20 font-medium transition-colors">
-            + Adjust Stock
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="glass-card rounded-xl p-2 inline-flex self-start gap-2 flex-wrap border border-border">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${
-              activeTab === tab.id 
-                ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20' 
-                : 'text-text-muted hover:text-white hover:bg-white/5'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="glass-card rounded-xl border border-border p-6 min-h-[500px]">
         
-        {/* OVERVIEW TAB */}
-        {activeTab === 'overview' && (
-          <div className="flex flex-col gap-6 animate-in slide-in-from-right-4">
-            
-            {/* Search & Filters */}
-            <div className="flex gap-4 items-center bg-surface/30 p-4 rounded-xl border border-border">
-              <div className="relative w-full max-w-md">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">🔍</span>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search SKU or Name..." 
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+            />
+          </div>
+          <button 
+            onClick={() => setIsTransferModalOpen(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+          >
+            <ArrowRightLeft className="w-4 h-4" />
+            Stock Transfer
+          </button>
+        </div>
+      </div>
+
+      {/* High-Density Grid */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase tracking-wider">
+                <th className="px-6 py-4 font-semibold">Product Name</th>
+                <th className="px-6 py-4 font-semibold">SKU</th>
+                <th className="px-6 py-4 font-semibold">Category</th>
+                <th className="px-6 py-4 font-semibold">Branch</th>
+                <th className="px-6 py-4 font-semibold text-right">Available Stock</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {isLoading ? (
+                // SKELETON LOADER
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 rounded w-2/3"></div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+                    </td>
+                    <td className="px-6 py-4 flex justify-end">
+                      <div className="h-4 bg-slate-200 rounded w-12"></div>
+                    </td>
+                  </tr>
+                ))
+              ) : products.length === 0 ? (
+                // EMPTY STATE
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                    <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Package className="w-6 h-6 text-slate-400" />
+                    </div>
+                    <p className="font-medium text-slate-800">No inventory found.</p>
+                  </td>
+                </tr>
+              ) : (
+                products.map((item) => (
+                  <tr key={`${item.id}-${item.location_id}`} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{item.name}</td>
+                    <td className="px-6 py-4 text-sm text-slate-500 font-mono">{item.sku}</td>
+                    <td className="px-6 py-4 text-sm text-slate-500">{item.category?.name || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-500">{item.location_name}</td>
+                    <td className="px-6 py-4 text-sm text-right font-medium">
+                      {item.stock_quantity <= lowStockThreshold ? (
+                        <div className="flex items-center justify-end gap-1.5 text-rose-500 font-bold bg-rose-50 px-2.5 py-1 rounded-md inline-flex border border-rose-100">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          {item.stock_quantity}
+                        </div>
+                      ) : (
+                        <span className="text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md inline-flex border border-emerald-100">
+                          {item.stock_quantity}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* STOCK TRANSFER MODAL */}
+      {isTransferModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-indigo-600" />
+                Transfer Stock
+              </h2>
+              <button 
+                onClick={() => { setIsTransferModalOpen(false); reset(); }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit(onTransferSubmit)} className="p-5 flex flex-col gap-4">
+              
+              {/* Product */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-slate-700">Select Product</label>
+                <select 
+                  {...register("product_id", { valueAsNumber: true })}
+                  className={clsx(
+                    "w-full px-3 py-2 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500",
+                    errors.product_id ? "border-rose-500 focus:ring-rose-500" : "border-slate-300"
+                  )}
+                >
+                  <option value="0">-- Choose a Product --</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>
+                  ))}
+                </select>
+                {errors.product_id && (
+                  <span className="text-xs font-semibold text-rose-500">{errors.product_id.message}</span>
+                )}
+              </div>
+
+              {/* Source Branch */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-slate-700">Source Branch</label>
+                <select 
+                  {...register("from_location_id", { valueAsNumber: true })}
+                  className={clsx(
+                    "w-full px-3 py-2 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500",
+                    errors.from_location_id ? "border-rose-500 focus:ring-rose-500" : "border-slate-300"
+                  )}
+                >
+                  <option value="0">-- From Location --</option>
+                  {locations.map((l: any) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                {errors.from_location_id && (
+                  <span className="text-xs font-semibold text-rose-500">{errors.from_location_id.message}</span>
+                )}
+              </div>
+
+              {/* Destination Branch */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-slate-700">Destination Branch</label>
+                <select 
+                  {...register("to_location_id", { valueAsNumber: true })}
+                  className={clsx(
+                    "w-full px-3 py-2 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500",
+                    errors.to_location_id ? "border-rose-500 focus:ring-rose-500" : "border-slate-300"
+                  )}
+                >
+                  <option value="0">-- To Location --</option>
+                  {locations.map((l: any) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                {errors.to_location_id && (
+                  <span className="text-xs font-semibold text-rose-500">{errors.to_location_id.message}</span>
+                )}
+              </div>
+
+              {/* Quantity */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-slate-700">Quantity</label>
                 <input 
-                  type="text" 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by Product Name or SKU..." 
-                  className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all"
+                  type="number"
+                  step="0.0001"
+                  {...register("quantity", { valueAsNumber: true })}
+                  className={clsx(
+                    "w-full px-3 py-2 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500",
+                    errors.quantity ? "border-rose-500 focus:ring-rose-500" : "border-slate-300"
+                  )}
+                  placeholder="e.g. 50"
+                />
+                {errors.quantity && (
+                  <span className="text-xs font-semibold text-rose-500">{errors.quantity.message}</span>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-slate-700">Note (Optional)</label>
+                <input 
+                  type="text"
+                  {...register("note")}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Reason for transfer"
                 />
               </div>
-              <select className="bg-background border border-border rounded-lg px-4 py-2.5 text-text-muted outline-none focus:ring-2 focus:ring-emerald-500/50">
-                <option value="">All Locations</option>
-                <option value="main">Main Store</option>
-                <option value="warehouse">Warehouse A</option>
-              </select>
-              <div className="ml-auto text-sm font-medium px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20">
-                Total Value: ৳14,250.00
-              </div>
-            </div>
 
-            {/* Stock Table */}
-            <div className="overflow-x-auto rounded-xl border border-border bg-background/50">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-surface/80 border-b border-border">
-                  <tr>
-                    <th className="p-4 font-semibold text-text-muted">Product</th>
-                    <th className="p-4 font-semibold text-text-muted">SKU</th>
-                    <th className="p-4 font-semibold text-text-muted">Location</th>
-                    <th className="p-4 font-semibold text-text-muted text-right">Qty Available</th>
-                    <th className="p-4 font-semibold text-text-muted text-center">Status</th>
-                    <th className="p-4 font-semibold text-text-muted text-center">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-text-muted">Loading stock data...</td></tr>
-                  ) : filteredStocks.length === 0 ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-text-muted">No products found.</td></tr>
-                  ) : (
-                    filteredStocks.map(s => {
-                      const qty = parseFloat(s.qty_available);
-                      let statusColor = 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30';
-                      let statusText = 'In Stock';
-                      if (qty <= 0) {
-                        statusColor = 'text-danger bg-danger/20 border-danger/30';
-                        statusText = 'Out of Stock';
-                      } else if (qty < 10) {
-                        statusColor = 'text-amber-400 bg-amber-500/20 border-amber-500/30';
-                        statusText = 'Low Stock';
-                      }
-
-                      return (
-                        <tr key={s.id} className="border-b border-border/50 hover:bg-surface transition-colors">
-                          <td className="p-4 font-bold text-white">{s.product_name}</td>
-                          <td className="p-4 font-mono text-text-muted">{s.sku || 'N/A'}</td>
-                          <td className="p-4 text-primary font-medium">{s.location_name}</td>
-                          <td className="p-4 text-right font-mono text-lg text-white">{qty}</td>
-                          <td className="p-4 text-center">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase border ${statusColor}`}>
-                              {statusText}
-                            </span>
-                          </td>
-                          <td className="p-4 text-center">
-                            <div className="flex gap-2 justify-center">
-                              <button onClick={() => handleOpenModal('adjust', s)} className="px-3 py-1 bg-surface border border-border rounded text-xs font-medium text-emerald-400 hover:bg-emerald-500/10">Adjust</button>
-                              <button onClick={() => handleOpenModal('transfer', s)} className="px-3 py-1 bg-surface border border-border rounded text-xs font-medium text-blue-400 hover:bg-blue-500/10">Transfer</button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ADJUSTMENTS TAB */}
-        {activeTab === 'adjustments' && (
-          <div className="animate-in slide-in-from-right-4">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-white">Recent Adjustments</h2>
-              <button onClick={() => handleOpenModal('adjust')} className="bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-emerald-500/20">+ New Adjustment</button>
-            </div>
-            
-            <div className="rounded-xl border border-border bg-background/50 overflow-hidden">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-surface/80 border-b border-border">
-                  <tr>
-                    <th className="p-4 font-semibold text-text-muted">Date</th>
-                    <th className="p-4 font-semibold text-text-muted">Ref No.</th>
-                    <th className="p-4 font-semibold text-text-muted">Location</th>
-                    <th className="p-4 font-semibold text-text-muted">Type</th>
-                    <th className="p-4 font-semibold text-text-muted">Total Qty</th>
-                    <th className="p-4 font-semibold text-text-muted">Reason</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-border/50 hover:bg-surface">
-                    <td className="p-4 text-text-muted">02 Jun 2026</td>
-                    <td className="p-4 font-mono text-white">ADJ-2026-001</td>
-                    <td className="p-4">Main Store</td>
-                    <td className="p-4"><span className="text-danger font-bold">Decrease (-)</span></td>
-                    <td className="p-4 font-mono">2.00</td>
-                    <td className="p-4 text-text-muted">Damaged during transit</td>
-                  </tr>
-                  <tr className="hover:bg-surface">
-                    <td className="p-4 text-text-muted">01 Jun 2026</td>
-                    <td className="p-4 font-mono text-white">ADJ-2026-002</td>
-                    <td className="p-4">Warehouse A</td>
-                    <td className="p-4"><span className="text-success font-bold">Increase (+)</span></td>
-                    <td className="p-4 font-mono">5.00</td>
-                    <td className="p-4 text-text-muted">Found during inventory audit</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* TRANSFERS TAB */}
-        {activeTab === 'transfers' && (
-          <div className="animate-in slide-in-from-right-4">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-white">Stock Transfers</h2>
-              <button onClick={() => handleOpenModal('transfer')} className="bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-emerald-500/20">+ New Transfer</button>
-            </div>
-            
-            <div className="rounded-xl border border-border bg-background/50 overflow-hidden">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-surface/80 border-b border-border">
-                  <tr>
-                    <th className="p-4 font-semibold text-text-muted">Date</th>
-                    <th className="p-4 font-semibold text-text-muted">Ref No.</th>
-                    <th className="p-4 font-semibold text-text-muted">From Location</th>
-                    <th className="p-4 font-semibold text-text-muted">To Location</th>
-                    <th className="p-4 font-semibold text-text-muted">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-border/50 hover:bg-surface">
-                    <td className="p-4 text-text-muted">02 Jun 2026</td>
-                    <td className="p-4 font-mono text-white">TRF-2026-091</td>
-                    <td className="p-4 font-medium">Warehouse A</td>
-                    <td className="p-4 font-medium text-primary">Main Store</td>
-                    <td className="p-4"><span className="bg-warning/20 text-warning px-2 py-1 rounded text-xs font-bold border border-warning/30">IN TRANSIT</span></td>
-                  </tr>
-                  <tr className="hover:bg-surface">
-                    <td className="p-4 text-text-muted">28 May 2026</td>
-                    <td className="p-4 font-mono text-white">TRF-2026-090</td>
-                    <td className="p-4 font-medium">Main Store</td>
-                    <td className="p-4 font-medium text-primary">Warehouse B</td>
-                    <td className="p-4"><span className="bg-success/20 text-success px-2 py-1 rounded text-xs font-bold border border-success/30">COMPLETED</span></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-      </div>
-
-      {/* Action Modals */}
-      {isModalOpen && modalType === 'adjust' && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-in fade-in">
-          <div className="bg-surface border border-border p-6 rounded-2xl w-full max-w-lg shadow-2xl">
-            <h2 className="text-2xl font-bold mb-4 text-white">Adjust Stock</h2>
-            
-            <div className="flex flex-col gap-4">
-              <div>
-                <label className="block text-sm text-text-muted mb-1">Product</label>
-                <input value={selectedProduct ? `${selectedProduct.product_name} (${selectedProduct.sku})` : ''} className="w-full bg-background border border-border rounded-lg p-2.5 text-white" placeholder="Search or select product..." readOnly={!!selectedProduct} />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-text-muted mb-1">Location</label>
-                  <select className="w-full bg-background border border-border rounded-lg p-2.5 text-white">
-                    <option>{selectedProduct ? selectedProduct.location_name : 'Select Location...'}</option>
-                    <option>Main Store</option>
-                    <option>Warehouse A</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-text-muted mb-1">Adjustment Type</label>
-                  <select className="w-full bg-background border border-border rounded-lg p-2.5 text-white">
-                    <option value="decrease">Decrease (-)</option>
-                    <option value="increase">Increase (+)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-text-muted mb-1">Quantity to Adjust</label>
-                  <input type="number" className="w-full bg-background border border-border rounded-lg p-2.5 text-white font-mono" placeholder="0.00" />
-                </div>
-                <div>
-                  <label className="block text-sm text-text-muted mb-1">Current Qty</label>
-                  <input type="text" value={selectedProduct ? selectedProduct.qty_available : '0.00'} className="w-full bg-background/50 border border-border rounded-lg p-2.5 text-text-muted font-mono" readOnly />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm text-text-muted mb-1">Reason / Note</label>
-                <textarea className="w-full bg-background border border-border rounded-lg p-2.5 text-white h-20" placeholder="e.g. Found damaged during stock check"></textarea>
-              </div>
-
-              <div className="mt-4 flex gap-3">
-                <button onClick={() => { alert('Stock Adjusted!'); setIsModalOpen(false); }} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-lg font-bold transition-colors shadow-lg shadow-emerald-500/20">
-                  Save Adjustment
-                </button>
-                <button onClick={() => setIsModalOpen(false)} className="flex-1 bg-surface border border-border py-2.5 rounded-lg font-medium text-white hover:bg-white/10 transition-colors">
+              {/* Submit */}
+              <div className="mt-4 flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => { setIsTransferModalOpen(false); reset(); }}
+                  className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition-colors"
+                >
                   Cancel
                 </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isModalOpen && modalType === 'transfer' && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-in fade-in">
-          <div className="bg-surface border border-border p-6 rounded-2xl w-full max-w-lg shadow-2xl">
-            <h2 className="text-2xl font-bold mb-4 text-white">Transfer Stock</h2>
-            
-            <div className="flex flex-col gap-4">
-              <div>
-                <label className="block text-sm text-text-muted mb-1">Product</label>
-                <input value={selectedProduct ? `${selectedProduct.product_name} (${selectedProduct.sku})` : ''} className="w-full bg-background border border-border rounded-lg p-2.5 text-white" placeholder="Search or select product..." readOnly={!!selectedProduct} />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-text-muted mb-1">From Location</label>
-                  <select className="w-full bg-background border border-border rounded-lg p-2.5 text-white">
-                    <option>{selectedProduct ? selectedProduct.location_name : 'Select Origin...'}</option>
-                    <option>Main Store</option>
-                    <option>Warehouse A</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-text-muted mb-1">To Location</label>
-                  <select className="w-full bg-background border border-border rounded-lg p-2.5 text-white">
-                    <option>Select Destination...</option>
-                    <option>Warehouse B</option>
-                    <option>Main Store</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm text-text-muted mb-1">Transfer Quantity</label>
-                <input type="number" className="w-full bg-background border border-border rounded-lg p-2.5 text-white font-mono" placeholder="0.00" />
-              </div>
-
-              <div>
-                <label className="block text-sm text-text-muted mb-1">Shipping Note / Reference</label>
-                <input type="text" className="w-full bg-background border border-border rounded-lg p-2.5 text-white" placeholder="Optional reference" />
-              </div>
-
-              <div className="mt-4 flex gap-3">
-                <button onClick={() => { alert('Transfer Initiated!'); setIsModalOpen(false); }} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-lg font-bold transition-colors shadow-lg shadow-blue-500/20">
-                  Initiate Transfer
-                </button>
-                <button onClick={() => setIsModalOpen(false)} className="flex-1 bg-surface border border-border py-2.5 rounded-lg font-medium text-white hover:bg-white/10 transition-colors">
-                  Cancel
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
+                >
+                  {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isSubmitting ? 'Processing...' : 'Execute Transfer'}
                 </button>
               </div>
-            </div>
+
+            </form>
           </div>
         </div>
       )}

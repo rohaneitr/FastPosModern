@@ -4,8 +4,8 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use App\Domain\Tenant\Models\Business;
-use App\Domain\IAM\Models\User;
+use App\Modules\Tenant\Models\Business;
+use App\Modules\IAM\Models\User;
 
 class MigrateLegacyTenants extends Command
 {

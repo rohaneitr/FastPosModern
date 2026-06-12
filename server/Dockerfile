@@ -4,8 +4,10 @@ FROM php:8.4-cli
 # Install system packages
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
-        libsqlite3-dev unzip curl git \
-    && docker-php-ext-install pdo pdo_sqlite pcntl \
+        libsqlite3-dev unzip curl git libgmp-dev libzip-dev libpq-dev \
+        libpng-dev libjpeg-dev libfreetype6-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo pdo_sqlite pcntl bcmath gmp zip pdo_pgsql pgsql gd \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Composer globally
@@ -40,6 +42,6 @@ EXPOSE 8000
 CMD bash -c "\
     touch /var/db/database.sqlite && \
     php artisan config:clear && \
-    php artisan migrate:fresh --seed --force && \
+    php artisan migrate --force && \
     php -S 0.0.0.0:8000 -t public \
 "

@@ -1,0 +1,11 @@
+{
+    "name": "Restaurant Module",
+    "slug": "restaurant",
+    "version": "1.0.0",
+    "dependencies": [
+        "core-pos"
+    ],
+    "providers": [
+        "App\\Modules\\Restaurant\\Providers\\RestaurantServiceProvider"
+    ]
+}

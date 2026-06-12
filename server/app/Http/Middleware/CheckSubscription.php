@@ -5,7 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use App\Domain\Tenant\Models\Business;
+use App\Modules\Tenant\Models\Business;
 
 class CheckSubscription
 {
@@ -40,21 +40,20 @@ class CheckSubscription
             ], 402);
         }
 
-        if ($business->subscription->isPastDue()) {
-            // Allow basic GET requests for settings/profile, block operational POST/PUT
-            if (!$request->isMethod('get')) {
-                return response()->json([
-                    'message' => 'Payment Past Due. Please update billing to perform this action.',
-                    'error_code' => 'SUBSCRIPTION_PAST_DUE'
-                ], 402);
-            }
+        $isExpired = false;
+
+        if (!$business->isTrialActive() && !$business->isSubscriptionActive()) {
+            $isExpired = true;
         }
         
-        if (!$business->subscription->isActive() && !$business->subscription->isPastDue()) {
-            return response()->json([
-                'message' => 'Subscription inactive or cancelled.',
-                'error_code' => 'SUBSCRIPTION_INACTIVE'
-            ], 402);
+        if ($isExpired || (!$business->subscription->isActive() && !$business->subscription->isPastDue())) {
+            if (!$request->isMethod('get')) {
+                return response()->json([
+                    'message' => 'Your trial or subscription has expired. Please upgrade to continue using FastPosModern.',
+                    'error_code' => 'SUBSCRIPTION_EXPIRED',
+                    'redirect_url' => '/business/billing/expired'
+                ], 402);
+            }
         }
 
         // Attach subscription limits to request for downstream controller validation

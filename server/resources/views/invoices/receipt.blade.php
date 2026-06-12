@@ -50,7 +50,16 @@
         <tbody>
             @foreach($lines as $line)
             <tr>
-                <td>{{ $line->name }}<br><small style="color:#999">{{ $line->sku ?? '' }}</small></td>
+                <td>
+                    {{ $line->name }}<br>
+                    <small style="color:#999">{{ $line->sku ?? '' }}</small>
+                    @if(!empty($line->warranty_duration))
+                    <br><small style="color:#666">Warranty: {{ $line->warranty_duration }}</small>
+                    @endif
+                    @if(!empty($line->tracking_numbers) && count($line->tracking_numbers) > 0)
+                    <br><small style="color:#666">S/N: {{ implode(', ', $line->tracking_numbers) }}</small>
+                    @endif
+                </td>
                 <td class="text-right">{{ $line->quantity }}</td>
                 <td class="text-right">${{ number_format($line->unit_price, 2) }}</td>
                 <td class="text-right">${{ number_format($line->unit_price * $line->quantity, 2) }}</td>

@@ -1,0 +1,54 @@
+name: Production Cloud Deployment
+
+on:
+  push:
+    branches:
+      - production
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to Hetzner Ubuntu Server
+    runs-on: ubuntu-latest
+    
+    # Ensures only one deployment runs at a time
+    concurrency: 
+      group: production-deploy
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Secure SSH Injection & Rolling Update
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            echo "[*] Initiating Zero-Downtime Deployment Gatekeeper"
+            cd /opt/fastpos
+            
+            # Fetch latest repository changes securely
+            git fetch origin
+            git reset --hard origin/production
+            
+            # The docker-compose.prod.yml defines `update_config: order: start-first`
+            # This triggers a true rolling update without killing active sessions.
+            
+            echo "[*] Pulling latest Immutable Container Images..."
+            docker compose -f docker-compose.prod.yml pull
+            
+            echo "[*] Executing Zero-Downtime Rolling Update..."
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            
+            echo "[*] Validating and Executing Idempotent Schema Migrations..."
+            docker compose -f docker-compose.prod.yml exec -T backend php artisan migrate --force
+            
+            echo "[*] Clearing & Warming System Caches..."
+            docker compose -f docker-compose.prod.yml exec -T backend php artisan optimize:clear
+            docker compose -f docker-compose.prod.yml exec -T backend php artisan optimize
+            
+            echo "[*] Deployment Successful. System is stable."

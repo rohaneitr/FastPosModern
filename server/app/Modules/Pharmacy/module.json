@@ -1,0 +1,12 @@
+{
+    "name": "Pharmacy Module",
+    "slug": "pharmacy",
+    "version": "1.0.0",
+    "dependencies": [
+        "core-pos",
+        "serial-number"
+    ],
+    "providers": [
+        "App\\Modules\\Pharmacy\\Providers\\PharmacyServiceProvider"
+    ]
+}
