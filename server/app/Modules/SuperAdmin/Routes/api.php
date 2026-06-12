@@ -40,6 +40,8 @@ Route::middleware(['auth:sanctum', 'role:SuperAdmin'])->group(function () {
         Route::get('/businesses', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'businesses']);
         Route::post('/businesses', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'storeBusiness']);
         Route::delete('/businesses/{id}', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'destroyBusiness']);
+        Route::patch('/businesses/{id}/restore', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'restoreBusiness']); // Previously orphaned method — now registered
+
         Route::post('/businesses/{id}/toggle', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'toggleStatus']);
         Route::post('/businesses/{id}/modules', [\App\Modules\Tenant\Controllers\SuperadminController::class, 'updateModules']);
         

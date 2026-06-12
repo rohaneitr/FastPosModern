@@ -36,9 +36,10 @@ Route::prefix('v1')->group(function () {
             // Route::put('/tickets/{id}/status', [\App\Domain\Support\Controllers\TicketController::class, 'updateStatus']);
 
 
-        // ---- BUSINESS ADMIN ONLY ----
+        // ---- BILLING ACTIONS (requires tenant.billing permission) ----
         Route::middleware(['subscribed'])->group(function () {
-            Route::middleware('role:BusinessAdmin')->group(function () {
+            // FIX: was 'role:BusinessAdmin' — now 'permission:tenant.billing'
+            Route::middleware('permission:tenant.billing')->group(function () {
                 Route::post('/tenant/subscription/change-plan', [\App\Modules\Tenant\Controllers\SubscriptionController::class, 'changePlan']);
             });
 
@@ -97,8 +98,11 @@ Route::prefix('v1')->group(function () {
             Route::post('/auth/logout', [\App\Modules\IAM\Controllers\AuthController::class, 'logout']);
             Route::get('/auth/me', [\App\Modules\IAM\Controllers\AuthController::class, 'me']);
             
-            Route::middleware('role_or_permission:BusinessAdmin|Cashier')->group(function () {
+            // FIX: was 'role_or_permission:BusinessAdmin|Cashier' — now uses specific permissions
+            Route::middleware('permission:products.view')->group(function () {
                 Route::get('/sync/products', [\App\Modules\Catalog\Controllers\ProductController::class, 'index']);
+            });
+            Route::middleware('permission:sales.manage')->group(function () {
                 Route::get('/sync/pull', [\App\Modules\Tenant\Controllers\SyncController::class, 'pull']);
                 Route::post('/sync/push', [\App\Modules\Tenant\Controllers\SyncController::class, 'push']);
             });

@@ -80,13 +80,14 @@ class ProductController extends Controller
             if ($validated['type'] === 'variable' && !empty($validated['variations'])) {
                 foreach ($validated['variations'] as $v) {
                     DB::table('variations')->insert([
-                        'product_id' => $product->id,
-                        'name' => $v['name'],
-                        'sub_sku' => $v['sub_sku'] ?? ($product->sku . '-' . rand(10,99)),
+                        'business_id'           => $businessId, // Phase 2: direct tenant isolation
+                        'product_id'            => $product->id,
+                        'name'                  => $v['name'],
+                        'sub_sku'               => $v['sub_sku'] ?? ($product->sku . '-' . rand(10, 99)),
                         'default_purchase_price' => $v['default_purchase_price'] ?? 0,
-                        'sell_price_inc_tax' => $v['sell_price_inc_tax'] ?? 0,
-                        'created_at' => now(),
-                        'updated_at' => now(),
+                        'sell_price_inc_tax'    => $v['sell_price_inc_tax'] ?? 0,
+                        'created_at'            => now(),
+                        'updated_at'            => now(),
                     ]);
                 }
             }

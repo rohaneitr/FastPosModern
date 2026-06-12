@@ -1,20 +1,38 @@
-# FastPOS Project Memory - Security
+# FastPOS Modern — Security & RBAC Memory
+> Last Updated: 2026-06-12
 
-## Latest Updates: 2026-06-04
-We completed a crucial functional completion phase to resolve identified data leakage risks.
+## Current RBAC State
 
-### 1. Hardened Tenant Scope
-- **Issue**: `TenantModel` global scope previously dropped isolation constraints if a user lacked a `business_id` (e.g. Super Admin role context), leading to potential data spillage if RBAC bypassed.
-- **Resolution**: Updated `TenantModel::booted()` to force isolation to `business_id = -1` when `auth()->user()->business_id` is missing. 
+### Roles (5 defined)
+| Role | Key Permissions |
+|---|---|
+| SuperAdmin | platform.manage + ALL |
+| BusinessAdmin | tenant.manage, users.*, products.manage, inventory.manage, sales.manage, reports.manage, pos.access |
+| Cashier | pos.access, sales.manage |
+| InventoryManager | products.manage, inventory.manage |
+| Accountant | reports.manage, sales.manage |
 
-### 2. Subdomain Validation on Login
-- **Issue**: `/login` was fully global, meaning a user from one tenant could technically authorize a session from the subdomain UI of another tenant, causing visual/data context desync.
-- **Resolution**: Intercepted the Auth flow in `AuthController@login`. If a `subdomain` is passed in the payload, the backend strictly verifies it matches the resolved user's `business->subdomain`.
+### KNOWN FLAWS (Do not fix yet — audit only)
+1. `middleware('role:BusinessAdmin')` hardcoded in route files → Prevents custom roles
+2. `DELETE /contacts` → gated by `tenant.manage` (WRONG — should be `contacts.delete`)
+3. `DELETE /suppliers` → gated by `products.manage` (WRONG — should be `suppliers.delete`)
+4. `DELETE /expenses` → gated by `reports.manage` (WRONG — should be `expenses.delete`)
+5. `DELETE /purchases` → gated by `products.manage` (WRONG — should be `purchases.delete`)
 
-### 3. Query Builder Tenant Isolation Abstraction
-- **Issue**: Extensive use of raw `DB::table(...)` query builders throughout the controllers (`HRController`, `SalesController`, etc.) manually appended `->where('business_id', $businessId)`. This was susceptible to human error.
-- **Resolution**: Created a `->tenant($tablePrefix)` macro on the `Illuminate\Database\Query\Builder` class via `AppServiceProvider`. Refactored all domain controllers to utilize this robust pattern inherently.
+### Completed Security Features
+- Tenant subdomain validation on login (prevents cross-tenant session desync)
+- `TenantModel` global scope forces `business_id = -1` when user has no business_id (prevents spillage)
+- `VerifyHardwareHash` middleware locks POS to registered device fingerprint
+- `RbacShadowLogger` non-blocking forensic audit on all permission-protected routes
+- Immutable `audit_logs` with SHA-256 checksums
+- `impersonator_id` tracked in audit_logs for SuperAdmin impersonation
+- Rate limiting: `throttle:auth` on login, `throttle:60,1` on checkout/sync endpoints
+- Redis cache: Dashboard KPIs (15-min TTL, per `business_id` key)
+- Redis cache: Subdomain resolution (15-min TTL, per subdomain key)
+- Cache invalidation on new sale/transaction/sync
 
-## Constraints & Rules Verified
-- **RBAC**: Super Admins inherently maintain global access without compromising tenant boundaries due to `role_or_permission` guards remaining untouched.
-- **File Structure**: No sensitive configs (`.env`) were modified or committed. Best practices maintained.
+### RBAC Refactoring Plan (Phase 1 — Next Priority)
+1. Add granular permissions: `contacts.delete`, `suppliers.delete`, `expenses.delete`, `purchases.delete`, `products.delete`, `locations.manage`, `users.invite`
+2. Add `Manager` role with mid-level permissions
+3. Replace ALL `middleware('role:X')` with `middleware('permission:X')` 
+4. Run `php artisan db:seed --class=RolesAndPermissionsSeeder`
