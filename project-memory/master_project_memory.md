@@ -473,8 +473,25 @@ hr.attendance         → Clock in/out (all staff)
   - Created: `features/superadmin/tenants/components/TenantTable.tsx` (+ Skeleton, EmptyState, QuotaBar, Row)
   - Created: `features/superadmin/tenants/components/TenantModals.tsx` (ManageModules, Billing, CreateTenant)
   - Build: ✅ Exit code 0 — /superadmin/tenants compiled successfully
-- [ ] **Task 4.2**: Break `terminal/page.tsx` → extract to `features/pos/` components + hooks
-- [ ] **Task 4.3**: Break `categories/page.tsx` → `<CategoryForm>`, `<CategoryTable>`, `useCategories.ts`
+- [x] **Task 4.2**: `terminal/page.tsx` decomposed — 572L → 55L — 2026-06-12
+  - Created: `features/pos/hooks/usePOSTerminal.ts` (network, sync engine, SWR, checkout idempotency)
+  - Created: `features/pos/components/ProductGrid.tsx` (memoized filter, skeleton, error, empty)
+  - Created: `features/pos/components/CartPanel.tsx` (qty controls, stock alerts, offline warning)
+  - Created: `features/pos/components/RegisterModals.tsx` (OpenRegisterModal, CloseRegisterModal)
+  - Build: ✅ Exit code 0
+- [x] **Task 4.3**: `categories/page.tsx` = 0L (target was empty). Decomposed next 2 God Components instead — 2026-06-12
+  - **4.3-A** `inventory/page.tsx` 355L → 50L:
+    - `features/inventory/types/index.ts` — transferSchema (Zod), ProductStock, Location, LOW_STOCK_THRESHOLD
+    - `features/inventory/hooks/useInventory.ts` — SWR + URL-sync + zod transfer form + onTransferSubmit
+    - `features/inventory/components/InventoryTable.tsx` — Skeleton, EmptyState, StockBadge
+    - `features/inventory/components/StockTransferModal.tsx` — purely presentational, typed UseFormReturn
+  - **4.3-B** `customers/page.tsx` 348L → 55L:
+    - `features/crm/types/index.ts` — customerSchema, CustomerFormValues, Customer, CUSTOMER_FORM_DEFAULTS
+    - `features/crm/hooks/useCustomers.ts` — SWR + URL-sync + form + delete + exportCSV
+    - `features/crm/components/CustomerTable.tsx` — skeleton, empty, per-row delete spinner
+    - `features/crm/components/CreateCustomerModal.tsx` — 8-field form, purely presentational
+    - BUG FIXED: `URL.revokeObjectURL()` was missing in original exportCSV → memory leak resolved
+  - Build: ✅ Exit code 0 (all pages verified)
 
 ### Phase 5: Architecture Cleanup
 - [ ] **Task 5.1**: Merge `Clinic` into `Clinical` module
