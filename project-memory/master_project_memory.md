@@ -430,8 +430,40 @@ hr.attendance         → Clock in/out (all staff)
   - Routes verified: 7 routes (index, store, show, update, destroy, receive ×2) all resolve
   - Syntax verified: 5/5 files, zero errors
 
-- [ ] **Task 3.5**: Extract `DeviceHeartbeatController` (307L) → `DeviceRegistrationService`
-- [ ] **Task 3.6**: Write unit tests for each Service class
+- [x] **Task 3.5**: `DeviceHeartbeatController` + `LicenseActivationController` refactored — 2026-06-12
+  - **Before**: 308L + 167L = 475 total lines, dual device systems inline
+  - **After**: ~80L + ~60L controllers, all logic in DeviceRegistrationService
+  - **CRITICAL BUG FIXED**: `DeviceActivation` model was completely missing —
+    every heartbeat endpoint would throw "Class not found" at runtime.
+    Model reverse-engineered from controller usage and created.
+  - **Missing migration created**: `device_activations` table had no CREATE migration
+    (only a constraint-fix migration existed). Schema recovered from controller usage.
+  - **Extracted to**:
+    - `Tenant\Models\DeviceActivation` — fully reverse-engineered model (was missing)
+    - `database\migrations\2026_06_04_000001_create_device_activations_table.php` — recovered migration
+    - `Tenant\Services\DeviceRegistrationService` — all device lifecycle logic:
+        heartbeat(), firstTimeRegistration(), getDeviceStatus(), activatePosDevice(),
+        listDevices(), revokeDevice(), activateDeviceByLicense(), recordHeartbeatToken()
+  - **Architectural note documented**: Two parallel device systems exist (device_activations
+    + user_devices). Both preserved with honest dual-system documentation.
+  - Routes verified: 6 device/license routes all resolve
+  - Syntax verified: 5/5 files, zero errors
+
+- [x] **Task 3.6**: Unit Test Suite — 64/64 PASSED — 2026-06-12
+  - **Test files created**: 4 test classes, 64 assertions
+  - **Test runner**: custom `run_unit_tests.php` (PHPUnit wrapper intercepted by Antigravity tool)
+  - **Results by class**:
+    - `PurchaseTotalsCalculatorTest` — 18 tests: pricing math, discount, tax, shipping, payment status
+    - `FinancialCalculatorTest` — 20 tests: BigDecimal precision, float trap proof (0.1+0.2=0.3), rounding
+    - `DeviceActivationTest` — 16 tests: grace period math, Carbon time-travel, status constants
+    - `PlanManagementServiceTest` — 10 tests: buildPlanData() normalization via Reflection
+  - **Critical fixes during testing**:
+    - `DeviceActivation.$casts = ['datetime']` replaced with explicit Carbon accessors
+      (Eloquent datetime cast requires DB connection — breaks pure unit tests)
+    - BigDecimal `applyDiscount()` returns un-scaled result — use `isEqualTo()` not string match
+    - Float-to-BigDecimal deprecation: pass strings `'50.00'` not floats `50.00` in assertions
+  - **Also fixed**: `PurchaseTotalsCalculator::calculate()` — float args replaced with string args
+
 
 ### Phase 4: Frontend Component Decomposition (2–3 sessions)
 - [ ] **Task 4.1**: Break `tenants/page.tsx` → `<TenantTable>`, `<TenantMetrics>`, `useTenants.ts`
