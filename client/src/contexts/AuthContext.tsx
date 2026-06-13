@@ -28,16 +28,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const router = useRouter();
 
   useEffect(() => {
-    // Check both storage types on initialization
-    const storedToken = sessionStorage.getItem('fastpos_token') || localStorage.getItem('fastpos_token');
+    // Check cookie-based session on initialization
+    const getCookie = (name: string) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(';').shift();
+      return null;
+    };
+
+    const sessionCookie = getCookie('fastpos_session');
     const storedUser = sessionStorage.getItem('fastpos_user') || localStorage.getItem('fastpos_user');
 
-    if (storedToken && storedUser) {
+    if (sessionCookie && storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        // Hydrate store properly so UI elements depending on useAuthStore work immediately
+        const role = getCookie('fastpos_user_role');
+        useAuthStore.getState().setAuth(
+          parsedUser, 
+          parsedUser.permissions || (role ? [role] : []), 
+          parsedUser.business?.location_id || null
+        );
       } catch {
         clearStorage();
       }
+    } else if (!sessionCookie && storedUser) {
+      // Token expired/removed but user data still remains
+      clearStorage();
     }
     setLoading(false);
   }, []);
@@ -47,6 +65,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.removeItem('fastpos_user');
     localStorage.removeItem('fastpos_token');
     localStorage.removeItem('fastpos_user');
+    document.cookie = 'fastpos_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = 'fastpos_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     document.cookie = 'fastpos_business_status=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     useAuthStore.getState().clearAuth();
   };
@@ -58,18 +78,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     clearStorage();
 
+    const maxAge = rememberMe ? 'max-age=604800;' : ''; // 7 days or session-only
+    document.cookie = `fastpos_session=${token}; path=/; ${maxAge}`;
+    
+    const role = userData?.roles?.[0]?.name || '';
+    document.cookie = `fastpos_user_role=${role}; path=/; ${maxAge}`;
+    
+    // Optional: Keep user object in localStorage for rich profile data
     if (rememberMe) {
       localStorage.setItem('fastpos_user', JSON.stringify(userData));
-      localStorage.setItem('fastpos_token', token);
     } else {
       sessionStorage.setItem('fastpos_user', JSON.stringify(userData));
-      sessionStorage.setItem('fastpos_token', token);
     }
     
     if (userData?.business?.status) {
-      document.cookie = `fastpos_business_status=${userData.business.status}; path=/`;
+      document.cookie = `fastpos_business_status=${userData.business.status}; path=/; ${maxAge}`;
     }
 
+    useAuthStore.getState().setAuth(userData, userData?.permissions || (role ? [role] : []), userData?.business?.location_id || null);
     setUser(userData);
   };
 

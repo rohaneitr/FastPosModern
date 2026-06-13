@@ -10,6 +10,8 @@ import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { useCartStore } from '@/store/useCartStore';
 import { useSyncStore } from '@/store/useSyncStore';
+import { useSales } from '@/hooks/api/useSales';
+import { ValidationError } from '@/lib/apiClient';
 
 // ── Validation Schemas ────────────────────────────────────────────────────
 
@@ -60,6 +62,8 @@ export function usePOSTerminal() {
   const [isCheckingOut,   setIsCheckingOut]   = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isSyncing,       setIsSyncing]       = useState(false);
+
+  const { checkoutMutation } = useSales();
 
   // ── Zustand Stores ────────────────────────────────────────────────────
   const { unsynced_transactions, addTransaction, removeTransaction } = useSyncStore();
@@ -172,9 +176,7 @@ export function usePOSTerminal() {
     try {
       if (!isOnline) throw new Error('ERR_NETWORK');
 
-      await api.post('/tenant/sales/checkout', payload, {
-        headers: { 'X-Idempotency-Key': idempotencyKey },
-      });
+      await checkoutMutation.mutateAsync({ payload, idempotencyKey });
       toast.success('Checkout Successful!');
       clearCart();
     } catch (err: any) {
@@ -187,19 +189,31 @@ export function usePOSTerminal() {
         return;
       }
 
-      // Ghost-sale catch — per-item stock error display
-      const errorMessage = err.response?.data?.message || err.message || String(err);
-      const match = errorMessage.match(/Insufficient stock for product ID: (\d+)/);
-      if (match?.[1]) {
-        setCartItemError(parseInt(match[1], 10), 'Out of stock during checkout!');
-        toast.error('Some items are out of stock. Please review your cart.');
-      } else {
-        toast.error(errorMessage || 'Checkout failed. Please try again.');
+      // CRITICAL ERROR HANDLING: 422 Validation Error mapped to UI
+      if (err instanceof ValidationError) {
+        Object.entries(err.errors).forEach(([field, messages]) => {
+          // Match array indices like 'items.0.quantity' or 'items.0.product_id'
+          const match = field.match(/items\.(\d+)/);
+          if (match) {
+            const index = parseInt(match[1], 10);
+            const cartItem = items[index];
+            if (cartItem) {
+              // Map the error string directly to the specific cart item
+              setCartItemError(cartItem.id, messages[0]);
+            }
+          }
+        });
+        toast.error(err.message || 'Validation failed. Please review your cart.');
+        return;
       }
+
+      // Fallback for general server errors (500s or non-422s)
+      const errorMessage = err.response?.data?.message || err.message || String(err);
+      toast.error(errorMessage || 'Checkout failed. Please try again.');
     } finally {
       setIsCheckingOut(false);
     }
-  }, [items, isOnline, getCartTotal, clearCart, addTransaction, setCartItemError]);
+  }, [items, isOnline, getCartTotal, clearCart, addTransaction, setCartItemError, checkoutMutation]);
 
   const handleOpenRegister = useCallback(async (data: { opening_balance: number }) => {
     try {

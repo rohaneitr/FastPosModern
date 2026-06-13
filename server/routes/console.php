@@ -23,6 +23,12 @@ Schedule::command('fpm:cleanup-archived-data')->weekly()->withoutOverlapping();
 // ── Automated Trial Period Check ──────────────────────────────────────────────
 Schedule::command('fpm:check-trial-status')->dailyAt('01:00')->withoutOverlapping();
 
+// ── Phase 7: Trial Auto-Suspension ────────────────────────────────────────────
+// Runs AFTER fpm:check-trial-status (01:00) to ensure notifications go out first.
+// Suspends businesses where: trial_ends_at < now AND subscription_status != 'active'
+// Idempotent — skips already-suspended businesses (is_active = false).
+Schedule::command('fpm:suspend-expired-trials')->dailyAt('02:00')->withoutOverlapping();
+
 Artisan::command('stress-test:superadmin', function () {
     $this->info("Running SuperAdmin API Stress Test...");
     

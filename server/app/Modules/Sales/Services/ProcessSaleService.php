@@ -5,10 +5,9 @@ namespace App\Modules\Sales\Services;
 use App\Modules\Sales\Actions\CalculateSaleTotalsAction;
 use App\Modules\Sales\DataTransferObjects\SaleCheckoutDTO;
 use App\Modules\Sales\DataTransferObjects\SaleCheckoutResult;
+use App\Modules\Sales\Events\SaleCompleted;
+use App\Modules\Sales\Models\Sale;
 use App\Modules\Inventory\Actions\ConsumeBatchFIFOInventoryAction;
-use App\Modules\Finance\Services\TenantAccountResolver;
-use App\Modules\Finance\Services\DoubleEntryEngine;
-use App\Modules\Security\Services\ForensicAuditService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
@@ -26,7 +25,7 @@ use Carbon\Carbon;
  *
  * All external dependencies are injected via constructor (testable).
  *
- * @author  Antigravity AI Agent — Phase 3
+ * @author  Antigravity AI Agent â€” Phase 3
  * @version 2026-06-12
  */
 class ProcessSaleService
@@ -34,18 +33,17 @@ class ProcessSaleService
     public function __construct(
         private readonly CalculateSaleTotalsAction       $calculateTotals,
         private readonly ConsumeBatchFIFOInventoryAction $consumeFifo,
-        private readonly DoubleEntryEngine               $doubleEntry,
     ) {}
 
     /**
      * Execute the full sale checkout pipeline.
      *
-     * @throws \Illuminate\Validation\ValidationException  — Stock insufficient
-     * @throws \Exception                                  — Business rule violation
+     * @throws \Illuminate\Validation\ValidationException  â€” Stock insufficient
+     * @throws \Exception                                  â€” Business rule violation
      */
     public function execute(SaleCheckoutDTO $dto): SaleCheckoutResult
     {
-        // ── 0. Idempotency Guard ─────────────────────────────────────────────
+        // â”€â”€ 0. Idempotency Guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if ($dto->isPosting && $dto->idempotencyKey) {
             $existing = DB::table('transactions')
                 ->where('idempotency_key', $dto->idempotencyKey)
@@ -64,7 +62,7 @@ class ProcessSaleService
             }
         }
 
-        // ── 1. Calculate Totals (Zero-Trust Pricing) ─────────────────────────
+        // â”€â”€ 1. Calculate Totals (Zero-Trust Pricing) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         $totals    = $this->calculateTotals->execute(
             $dto->items,
             $dto->taxRate,
@@ -78,7 +76,7 @@ class ProcessSaleService
             : clone $totals->finalTotal;
         $amountDue   = FinancialCalculator::applyDiscount($totals->finalTotal, $amountPaid);
 
-        // ── 2. Pharmacy Rx Shield ────────────────────────────────────────────
+        // â”€â”€ 2. Pharmacy Rx Shield â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         $productIds = collect($dto->items)->pluck('product_id')->unique()->values()->toArray();
         $rxCount    = DB::table('medicines_meta')
             ->whereIn('product_id', $productIds)
@@ -92,17 +90,17 @@ class ProcessSaleService
             }
         }
 
-        // ── 3. Credit sale guard ─────────────────────────────────────────────
+        // â”€â”€ 3. Credit sale guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if ($dto->isPosting && $amountDue->isGreaterThan(0.01) && empty($dto->contactId)) {
             throw new \Exception('Customer MUST be selected for credit sales / dues.');
         }
 
-        // ── 4. Advance / Store Credit balance checks ─────────────────────────
+        // â”€â”€ 4. Advance / Store Credit balance checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if ($dto->isPosting && $dto->paymentMethod === 'store_credit' && $amountPaid->isGreaterThan(0)) {
             $this->validateStoreCredit($dto->contactId, $amountPaid);
         }
 
-        // ── 5. Main DB Transaction ───────────────────────────────────────────
+        // â”€â”€ 5. Main DB Transaction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         $transactionId = DB::transaction(function () use ($dto, $totals, $invoiceNo, $amountPaid, $amountDue, $rxCount, $productIds) {
 
             $paymentStatus = 'paid';
@@ -211,13 +209,10 @@ class ProcessSaleService
                     'updated_at'               => Carbon::now(),
                 ]);
 
-                // 5g. Inventory deduction + serial tracking
+                // 5g. Accumulate COGS per line from pre-computed FIFO map
+                // NOTE: Actual stock deduction is handled by DeductStockFromSale listener.
                 if ($dto->isPosting) {
-                    $lineCogs = $this->deductInventoryForLine(
-                        $item, $actualQty, $dto, $lineId,
-                        $products, $compositeChildrenMap, $pendingSourcingProducts,
-                        $cogsMap, $finalCogsMap
-                    );
+                    $lineCogs  = FinancialCalculator::of($finalCogsMap[$item['product_id']] ?? 0);
                     $totalCogs = $totalCogs->plus($lineCogs);
                 }
             }
@@ -244,15 +239,31 @@ class ProcessSaleService
                     ->update(['status' => 'converted']);
             }
 
-            // 5j. Double-Entry Ledger
-            if ($dto->isPosting) {
-                $this->postDoubleEntry($dto->businessId, $dto->userId, $invoiceNo, $txId, $totals, $amountPaid, $amountDue, $totalCogs);
-            }
+            // 5j. Hydrate the Sale Eloquent model â€” listeners use it for relationships
+            //     and readable IDs. We load without re-querying by constructing from
+            //     the known state rather than calling Sale::findOrFail($txId) which
+            //     would add a round-trip. The model is used read-only by listeners.
+            $sale = Sale::findOrFail($txId);
 
-            // 5k. Loyalty Points
-            if ($dto->isPosting && $dto->contactId && $totals->finalTotal->isGreaterThan(0)) {
-                $this->awardLoyaltyPoints($dto->businessId, $dto->contactId, $txId, $invoiceNo, $totals->finalTotal);
-            }
+            // 5k. Dispatch SaleCompleted domain event (SYNCHRONOUS â€” no ShouldQueue).
+            //
+            //     Registered listeners run inline here, still inside this transaction:
+            //       1. DeductStockFromSale         â†’ product_stocks / serial ledger
+            //       2. ApplyLoyaltyPointsFromSale  â†’ loyalty_point_ledgers
+            //       3. RecordSaleJournalEntry       â†’ journal_entries / journal_lines
+            //
+            //     Any exception thrown by any listener propagates out of this closure
+            //     and causes DB::transaction() to automatically issue a ROLLBACK,
+            //     reverting the sale header, lines, payment, and all listener writes.
+            event(new SaleCompleted(
+                sale:       $sale,
+                dto:        $dto,
+                totals:     $totals,
+                totalCogs:  $totalCogs,
+                amountPaid: $amountPaid,
+                amountDue:  $amountDue,
+                invoiceNo:  $invoiceNo,
+            ));
 
             return $txId;
         }, 5);
@@ -270,7 +281,7 @@ class ProcessSaleService
         );
     }
 
-    // ── Private Helpers ───────────────────────────────────────────────────────
+    // â”€â”€ Private Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private function validateStoreCredit(?int $contactId, mixed $amountPaid): void
     {
@@ -311,6 +322,7 @@ class ProcessSaleService
         }
 
         $stockMap = DB::table('product_stocks')
+            ->where('business_id', $dto->businessId)
             ->whereIn('product_id', array_keys($productQuantities))
             ->where('location_id', $dto->locationId)
             ->lockForUpdate()
@@ -327,7 +339,7 @@ class ProcessSaleService
             if ($available >= $reqQty) {
                 $deductible[$prodId] = $reqQty;
             } else {
-                // Check if from composite — allow pending sourcing
+                // Check if from composite â€” allow pending sourcing
                 $isFromComposite = false;
                 foreach ($enrichedItems as $item) {
                     $type = $products->get($item['product_id'])->type ?? 'standard';
@@ -372,161 +384,17 @@ class ProcessSaleService
         return $finalCogsMap;
     }
 
-    private function deductInventoryForLine(
-        array $item, float $actualQty, SaleCheckoutDTO $dto,
-        int $lineId, $products, array $compositeChildrenMap,
-        array $pendingSourcingProducts, array $cogsMap, array $finalCogsMap
-    ): mixed {
-        $productType = $products->get($item['product_id'])->type ?? 'standard';
-        $lineCogs    = FinancialCalculator::of(0);
+    // â”€â”€ Methods removed in Phase 5 â€” Domain Event Decoupling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //
+    // The following private methods were extracted to domain listeners and
+    // deleted from this service. ProcessSaleService now only owns persistence
+    // of the sale record itself. All domain side-effects are handled by the
+    // SaleCompleted event's registered listeners.
+    //
+    //   deductInventoryForLine()  â†’ App\Modules\Inventory\Listeners\DeductStockFromSale
+    //   processSerialTracking()   â†’ App\Modules\Inventory\Listeners\DeductStockFromSale
+    //   postDoubleEntry()         â†’ App\Modules\Accounting\Listeners\RecordSaleJournalEntry
+    //   awardLoyaltyPoints()      â†’ App\Modules\CRM\Listeners\ApplyLoyaltyPointsFromSale
 
-        if ($productType === 'composite' && isset($compositeChildrenMap[$item['product_id']])) {
-            foreach ($compositeChildrenMap[$item['product_id']] as $childId => $qtyPerParent) {
-                if (isset($pendingSourcingProducts[$childId])) continue;
-
-                $totalChildQty = $actualQty * $qtyPerParent;
-                $stock = DB::table('product_stocks')
-                    ->where('product_id', $childId)
-                    ->where('location_id', $dto->locationId)
-                    ->lockForUpdate()->first();
-
-                if (!$stock || $stock->qty_available < $totalChildQty) {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
-                        'inventory' => ["Insufficient stock for kit component ID: $childId"]
-                    ]);
-                }
-
-                DB::table('product_stocks')->where('id', $stock->id)
-                    ->decrement('qty_available', $totalChildQty);
-            }
-            $lineCogs = FinancialCalculator::of($finalCogsMap[$item['product_id']] ?? 0);
-        } else {
-            $stock = DB::table('product_stocks')
-                ->where('product_id', $item['product_id'])
-                ->where('location_id', $dto->locationId)
-                ->lockForUpdate()->first();
-
-            if (!$stock || $stock->qty_available < $actualQty) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
-                    'inventory' => ['Insufficient stock available for the requested product.']
-                ]);
-            }
-
-            DB::table('product_stocks')->where('id', $stock->id)
-                ->decrement('qty_available', $actualQty);
-
-            $lineCogs = FinancialCalculator::of($finalCogsMap[$item['product_id']] ?? 0);
-        }
-
-        // Serial tracking
-        $productMeta    = $products->get($item['product_id']);
-        $requiresSerial = isset($productMeta->enable_sr_no) && $productMeta->enable_sr_no == 1;
-
-        if ($requiresSerial && empty($item['serial_numbers']) && empty($item['imei_numbers'])) {
-            throw new \Exception('Product ID ' . $item['product_id'] . ' requires a serial or IMEI number.');
-        }
-
-        if (!empty($item['serial_numbers']) || !empty($item['imei_numbers'])) {
-            $this->processSerialTracking($item, $dto->businessId, $lineId);
-        }
-
-        return $lineCogs;
-    }
-
-    private function processSerialTracking(array $item, int $businessId, int $lineId): void
-    {
-        $serials     = $item['serial_numbers'] ?? [];
-        $imeis       = $item['imei_numbers'] ?? [];
-        $maxTracking = max(count($serials), count($imeis));
-
-        if ($maxTracking !== (int) $item['quantity']) {
-            throw new \Exception('Serial count mismatch: got ' . $maxTracking . ', expected ' . $item['quantity']);
-        }
-
-        $exists = DB::table('transaction_item_serials')
-            ->where(function ($q) use ($serials, $imeis) {
-                if (!empty($serials)) $q->orWhereIn('serial_number', $serials);
-                if (!empty($imeis))   $q->orWhereIn('imei_number', $imeis);
-            })->exists();
-
-        if ($exists) {
-            throw new \Exception('FPM Security: Serial/IMEI already exists in active ledger.');
-        }
-
-        $available = DB::table('inventory_item_serials')
-            ->where('business_id', $businessId)
-            ->where('product_id', $item['product_id'])
-            ->where('status', 'Available')
-            ->where(function ($q) use ($serials, $imeis) {
-                if (!empty($serials)) $q->orWhereIn('serial_number', $serials);
-                if (!empty($imeis))   $q->orWhereIn('imei_number', $imeis);
-            })->lockForUpdate()->get();
-
-        if ($available->count() !== $maxTracking) {
-            throw new \Exception('One or more selected serial/IMEI numbers are not in Available stock.');
-        }
-
-        for ($i = 0; $i < $maxTracking; $i++) {
-            DB::table('transaction_item_serials')->insert([
-                'business_id'         => $businessId,
-                'transaction_item_id' => $lineId,
-                'serial_number'       => $serials[$i] ?? $imeis[$i],
-                'imei_number'         => $imeis[$i] ?? null,
-                'created_at'          => Carbon::now(),
-                'updated_at'          => Carbon::now(),
-            ]);
-        }
-
-        DB::table('inventory_item_serials')
-            ->whereIn('id', $available->pluck('id'))
-            ->update(['status' => 'Sold', 'transaction_sell_line_id' => $lineId, 'updated_at' => Carbon::now()]);
-    }
-
-    private function postDoubleEntry(int $businessId, int $userId, string $invoiceNo, int $txId, $totals, $amountPaid, $amountDue, $totalCogs): void
-    {
-        $cash     = TenantAccountResolver::resolve($businessId, TenantAccountResolver::CASH);
-        $ar       = TenantAccountResolver::resolve($businessId, TenantAccountResolver::AR);
-        $sales    = TenantAccountResolver::resolve($businessId, TenantAccountResolver::SALES);
-        $tax      = TenantAccountResolver::resolve($businessId, TenantAccountResolver::TAX_PAYABLE);
-        $discount = TenantAccountResolver::resolve($businessId, TenantAccountResolver::DISCOUNT);
-        $cogs     = TenantAccountResolver::resolve($businessId, TenantAccountResolver::COGS);
-        $inv      = TenantAccountResolver::resolve($businessId, TenantAccountResolver::INVENTORY);
-
-        $debits = $credits = [];
-        $credits[] = ['chart_of_account_id' => $sales, 'amount' => (string) $totals->subtotal];
-        if ($totals->taxAmount->isGreaterThan(0))    $credits[] = ['chart_of_account_id' => $tax,      'amount' => (string) $totals->taxAmount];
-        if ($totals->discountValue->isGreaterThan(0)) $debits[]  = ['chart_of_account_id' => $discount, 'amount' => (string) $totals->discountValue];
-        if ($amountPaid->isGreaterThan(0))            $debits[]  = ['chart_of_account_id' => $cash,     'amount' => (string) $amountPaid];
-        if ($amountDue->isGreaterThan(0))             $debits[]  = ['chart_of_account_id' => $ar,       'amount' => (string) $amountDue];
-        if ($totalCogs->isGreaterThan(0)) {
-            $debits[]  = ['chart_of_account_id' => $cogs, 'amount' => (string) $totalCogs];
-            $credits[] = ['chart_of_account_id' => $inv,  'amount' => (string) $totalCogs];
-        }
-
-        $this->doubleEntry->recordEntry(
-            $businessId, $invoiceNo, Carbon::now()->toDateString(),
-            "Sale #$invoiceNo", $debits, $credits, $txId, 'transaction', $userId
-        );
-    }
-
-    private function awardLoyaltyPoints(int $businessId, int $contactId, int $txId, string $invoiceNo, $finalTotal): void
-    {
-        $points = (int) floor((float) (string) $finalTotal / 100);
-        if ($points <= 0) return;
-
-        $last    = DB::table('loyalty_point_ledgers')->where('contact_id', $contactId)->orderByDesc('id')->first();
-        $balance = ($last->running_balance ?? 0) + $points;
-
-        DB::table('loyalty_point_ledgers')->insert([
-            'business_id'     => $businessId,
-            'contact_id'      => $contactId,
-            'transaction_id'  => $txId,
-            'points_earned'   => $points,
-            'points_redeemed' => 0,
-            'running_balance' => $balance,
-            'description'     => 'Points earned on Sale #' . $invoiceNo,
-            'created_at'      => Carbon::now(),
-            'updated_at'      => Carbon::now(),
-        ]);
-    }
 }
+

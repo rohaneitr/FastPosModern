@@ -79,7 +79,7 @@ class ReportController extends Controller
             ->leftJoin('users', 'transactions.created_by', '=', 'users.id')
             ->where('transactions.business_id', $businessId)->where('transactions.type', 'sell')
             ->select('transactions.invoice_no', 'transactions.transaction_date', 'transactions.final_total', 'transactions.status',
-                DB::raw("users.first_name || ' ' || users.last_name as cashier_name"))
+                DB::raw("CONCAT(users.first_name, ' ', users.last_name) as cashier_name"))
             ->orderByDesc('transactions.transaction_date')->limit(5)->get();
 
         return response()->json([

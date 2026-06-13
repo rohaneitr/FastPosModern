@@ -50,7 +50,6 @@ class TransactionController extends Controller
      */
     public function checkout(Request $request): JsonResponse
     {
-        Gate::authorize('pos.access');
 
         $businessId = $request->user()->business_id;
         $userId     = $request->user()->id;

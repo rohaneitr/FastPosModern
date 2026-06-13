@@ -5,6 +5,7 @@ FROM php:8.4-cli
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
         libsqlite3-dev unzip curl git libgmp-dev libzip-dev libpq-dev \
+        postgresql-client \
         libpng-dev libjpeg-dev libfreetype6-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo pdo_sqlite pcntl bcmath gmp zip pdo_pgsql pgsql gd \

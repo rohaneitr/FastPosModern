@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Loader2, Package, Tag, Hash, FileEdit, Trash2, X } from 'lucide-react';
-import api from '@/lib/api';
-import { FeatureGate } from '@/components/common/FeatureGate';
+import apiClient, { ValidationError } from '@/lib/apiClient';
+import { PermissionGate } from '@/components/common/PermissionGate';
+import { useInventory, useCreateProduct } from '@/hooks/api/useInventory';
 
 // Interfaces
 interface Category {
@@ -48,14 +49,13 @@ interface PaginationMeta {
 }
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [meta, setMeta] = useState<PaginationMeta | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   
+  const { products, meta, isLoading } = useInventory(searchQuery, page);
+  const { createProduct, isPending: isSubmitting } = useCreateProduct();
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // For dropdowns
   const [categories, setCategories] = useState<Category[]>([]);
@@ -75,41 +75,19 @@ export default function ProductsPage() {
     current_stock: '0'
   });
 
-  const fetchProducts = useCallback(async (search = '', pageNum = 1) => {
-    setIsLoading(true);
-    try {
-      const response = await api.get('/products', {
-        params: { search, page: pageNum }
-      });
-      // Handle the nested data structure typical of Laravel paginators
-      const data = response.data.data;
-      if (data && Array.isArray(data.data)) {
-        setProducts(data.data);
-        setMeta({
-          current_page: data.current_page,
-          last_page: data.last_page,
-          total: data.total
-        });
-      } else {
-        setProducts(data || []);
-      }
-    } catch (error) {
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  // Removed fetchProducts, using useInventory hook instead.
 
   const fetchDependencies = async () => {
     try {
       // Intentionally suppressing errors for these endpoints if they don't exist yet
       const [catRes, brandRes, unitRes] = await Promise.all([
-        api.get('/categories').catch(() => ({ data: { data: [] } })),
-        api.get('/brands').catch(() => ({ data: { data: [] } })),
-        api.get('/units').catch(() => ({ data: { data: [] } }))
+        apiClient.get<any>('/categories').catch(() => ({ data: [] })),
+        apiClient.get<any>('/brands').catch(() => ({ data: [] })),
+        apiClient.get<any>('/units').catch(() => ({ data: [] }))
       ]);
-      setCategories(catRes.data?.data || []);
-      setBrands(brandRes.data?.data || []);
-      setUnits(unitRes.data?.data || []);
+      setCategories(catRes.data || []);
+      setBrands(brandRes.data || []);
+      setUnits(unitRes.data || []);
     } catch (error) {
     }
   };
@@ -118,12 +96,7 @@ export default function ProductsPage() {
     fetchDependencies();
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchProducts(searchQuery, page);
-    }, 500); // Debounce search
-    return () => clearTimeout(timer);
-  }, [searchQuery, page, fetchProducts]);
+  // Removed manual debouncing for fetchProducts since React Query handles it with staleTime.
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -132,9 +105,8 @@ export default function ProductsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
     try {
-      await api.post('/products', {
+      await createProduct({
         name: formData.name,
         sku: formData.sku || null,
         category_id: formData.category_id ? parseInt(formData.category_id) : null,
@@ -150,12 +122,12 @@ export default function ProductsPage() {
         name: '', sku: '', category_id: '', brand_id: '', unit_id: '',
         purchase_price: '', selling_price: '', alert_quantity: '0', current_stock: '0'
       });
-      fetchProducts(searchQuery, 1);
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to save product. Please check your inputs.';
-      alert(errorMessage);
-    } finally {
-      setIsSubmitting(false);
+      if (error instanceof ValidationError) {
+        alert(error.message); // Ideally set field errors
+      } else {
+        alert(error.message || 'Failed to save product.');
+      }
     }
   };
 
@@ -186,7 +158,7 @@ export default function ProductsPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-            <FeatureGate permission="product.create">
+            <PermissionGate requiredPermission="inventory.manage">
               <button 
                 onClick={() => setIsModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm whitespace-nowrap shadow-sm hover:shadow"
@@ -194,7 +166,7 @@ export default function ProductsPage() {
                 <Plus className="w-4 h-4" />
                 Add New Product
               </button>
-            </FeatureGate>
+            </PermissionGate>
           </div>
         </div>
 
@@ -234,7 +206,7 @@ export default function ProductsPage() {
                         {searchQuery ? "We couldn't find any products matching your search." : "Get started by adding your first product to the inventory."}
                       </p>
                       {!searchQuery && (
-                        <FeatureGate permission="product.create">
+                        <PermissionGate requiredPermission="inventory.manage">
                           <button 
                             onClick={() => setIsModalOpen(true)}
                             className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-white dark:text-slate-900 text-white rounded-lg font-medium transition-colors text-sm hover:opacity-90 shadow-sm"
@@ -242,7 +214,7 @@ export default function ProductsPage() {
                             <Plus className="w-4 h-4" />
                             Add Product
                           </button>
-                        </FeatureGate>
+                        </PermissionGate>
                       )}
                     </div>
                   </td>
@@ -294,16 +266,16 @@ export default function ProductsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <FeatureGate permission="product.update">
+                        <PermissionGate requiredPermission="inventory.manage">
                           <button className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors" title="Edit">
                             <FileEdit className="w-4 h-4" />
                           </button>
-                        </FeatureGate>
-                        <FeatureGate permission="product.delete">
+                        </PermissionGate>
+                        <PermissionGate requiredPermission="inventory.manage">
                           <button className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="Delete">
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        </FeatureGate>
+                        </PermissionGate>
                       </div>
                     </td>
                   </tr>

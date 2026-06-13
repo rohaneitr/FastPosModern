@@ -57,7 +57,7 @@ class SuperadminController extends Controller
             ->select(
                 'businesses.id',
                 'businesses.name as business_name',
-                DB::raw("users.first_name || ' ' || users.last_name as owner_name"),
+                DB::raw("CONCAT(users.first_name, ' ', users.last_name) as owner_name"),
                 'users.email as owner_email',
                 'businesses.is_active',
                 'businesses.subscription_expires_at',
@@ -74,7 +74,7 @@ class SuperadminController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('businesses.name', 'ILIKE', "%{$search}%")
-                  ->orWhereRaw("users.first_name || ' ' || users.last_name ILIKE ?", ["%{$search}%"])
+                  ->orWhereRaw("CONCAT(users.first_name, ' ', users.last_name) ILIKE ?", ["%{$search}%"])
                   ->orWhere('users.email', 'ILIKE', "%{$search}%");
             });
         }

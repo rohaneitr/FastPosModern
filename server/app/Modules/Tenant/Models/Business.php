@@ -2,6 +2,7 @@
 
 namespace App\Modules\Tenant\Models;
 
+use App\Modules\Tenant\Services\TenantContextCache;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -97,6 +98,26 @@ class Business extends Model
      */
     protected static function booted()
     {
+        // ── Cache Invalidation (Phase 9) ───────────────────────────────────────
+        // MANDATORY: Clear the Redis tenant context cache whenever the Business
+        // model is written. This covers ALL write paths:
+        //   - Stripe webhook updates subscription_status
+        //   - Trial suspension cron sets is_active = false
+        //   - Admin updates business settings
+        //   - Subscription plan upgrade via SubscriptionController
+        //
+        // The 'saved' event fires after BOTH create() and update() operations.
+        // The 'deleted' event fires on soft-delete (SoftDeletes trait).
+        // Together these two hooks guarantee the cache is NEVER stale.
+        static::saved(function (self $business) {
+            TenantContextCache::forget($business->id);
+        });
+
+        static::deleted(function (self $business) {
+            TenantContextCache::forget($business->id);
+        });
+
+        // ── Cascading Soft-Delete (pre-existing) ──────────────────────────────
         static::deleting(function ($business) {
             foreach (['products', 'purchases', 'transactions'] as $table) {
                 if (\Illuminate\Support\Facades\Schema::hasColumn($table, 'deleted_at')) {

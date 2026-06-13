@@ -19,6 +19,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ── Strict Mode (bug catcher in non-production) ───────────────────────
+        // shouldBeStrict() combines three protections:
+        //   1. preventLazyLoading()   — throws on unloaded relations (N+1 catcher)
+        //   2. preventSilentlyDiscardingAttributes() — throws on fillable violations
+        //   3. preventAccessingMissingAttributes()  — throws on undefined attr reads
+        \Illuminate\Database\Eloquent\Model::shouldBeStrict(! app()->isProduction());
+        // Keep the explicit preventLazyLoading call as defence-in-depth for production:
+        // shouldBeStrict(false) in prod still allows preventLazyLoading to be set separately.
         \Illuminate\Database\Eloquent\Model::preventLazyLoading(! app()->isProduction());
 
         // ── Pulse Authorization ────────────────────────────────────────────────
@@ -62,19 +70,59 @@ class AppServiceProvider extends ServiceProvider
             });
         });
 
-        // 3. Public Global API Routes
+        // 3. General Tenant API — 60 req/min per authenticated user (or IP if unauthenticated)
+        // Applied via throttle:api middleware on the global api middleware stack.
         \Illuminate\Support\Facades\RateLimiter::for('api', function (\Illuminate\Http\Request $request) {
-            if ($request->header('X-E2E-Bypass') === 'true' && !app()->environment('production')) {
+            if ($request->header('X-E2E-Bypass') === 'true' && ! app()->environment('production')) {
                 return \Illuminate\Cache\RateLimiting\Limit::none();
             }
-            return \Illuminate\Cache\RateLimiting\Limit::perMinute(200)->by($request->user()?->id ?: $request->ip())->response(function () {
-                return response()->json(['message' => 'Too Many Requests', 'error_code' => 'RATE_LIMIT_EXCEEDED'], 429);
-            });
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(60)
+                ->by($request->user()?->id ?: $request->ip())
+                ->response(fn() => response()->json([
+                    'success'    => false,
+                    'message'    => 'Too many requests. Please slow down.',
+                    'code'       => 'RATE_LIMIT_EXCEEDED',
+                ], 429));
+        });
+
+        // 4. POS High-Burst Gateway — 500 req/min per authenticated user
+        // POS tablets issue rapid barcode scans, offline sync pushes, and heartbeats.
+        // A tight limit here would cause false 429s during bulk sync sessions.
+        // Applied explicitly on: sync/push, sync/pull, checkout.
+        \Illuminate\Support\Facades\RateLimiter::for('pos', function (\Illuminate\Http\Request $request) {
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(500)
+                ->by($request->user()?->id ?: $request->ip())
+                ->response(fn() => response()->json([
+                    'success' => false,
+                    'message' => 'POS rate limit exceeded. Reduce sync frequency.',
+                    'code'    => 'POS_RATE_LIMIT_EXCEEDED',
+                ], 429));
         });
 
         // ── Email event listeners (global mail audit logging) ──────────────────
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageSent::class,   \App\Listeners\LogSentEmail::class);
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageFailed::class, \App\Listeners\LogFailedEmail::class);
+
+        // ── Sales Domain Events (Phase 5 — Synchronous Listeners) ─────────────
+        // CRITICAL: These listeners do NOT implement ShouldQueue.
+        // They execute synchronously inside the DB::transaction() opened by
+        // ProcessSaleService. Any exception thrown rolls back the entire sale.
+        // Registration order = execution order:
+        //   1. DeductStockFromSale         — Inventory domain (throws on stock shortage)
+        //   2. ApplyLoyaltyPointsFromSale  — CRM domain      (throws on wallet error)
+        //   3. RecordSaleJournalEntry      — Accounting domain (throws on imbalance)
+        \Illuminate\Support\Facades\Event::listen(
+            \App\Modules\Sales\Events\SaleCompleted::class,
+            \App\Modules\Inventory\Listeners\DeductStockFromSale::class,
+        );
+        \Illuminate\Support\Facades\Event::listen(
+            \App\Modules\Sales\Events\SaleCompleted::class,
+            \App\Modules\CRM\Listeners\ApplyLoyaltyPointsFromSale::class,
+        );
+        \Illuminate\Support\Facades\Event::listen(
+            \App\Modules\Sales\Events\SaleCompleted::class,
+            \App\Modules\Accounting\Listeners\RecordSaleJournalEntry::class,
+        );
 
         // ── Dynamic SMTP override from database/cache ──────────────────────────
         // If a SuperAdmin has saved SMTP settings via the API, they are stored in

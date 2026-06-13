@@ -111,7 +111,7 @@ class RolesAndPermissionsSeeder extends Seeder
         foreach ($permissions as $permissionName) {
             Permission::firstOrCreate(
                 ['name' => $permissionName],
-                ['guard_name' => 'web']
+                ['guard_name' => 'sanctum']
             );
         }
 
@@ -124,14 +124,14 @@ class RolesAndPermissionsSeeder extends Seeder
         // NOTE: SuperAdmin routes use 'role:SuperAdmin' middleware BY DESIGN.
         //       This is the only role-based gate that is intentional and correct.
         // ────────────────────────────────────────────────────────────────────────
-        $superAdmin = Role::firstOrCreate(['name' => 'SuperAdmin', 'guard_name' => 'web']);
+        $superAdmin = Role::firstOrCreate(['name' => 'SuperAdmin', 'guard_name' => 'sanctum']);
         $superAdmin->syncPermissions(Permission::all());
 
         // ────────────────────────────────────────────────────────────────────────
         // ROLE: BusinessAdmin
         // Scope: All operations within their own tenant. Full control.
         // ────────────────────────────────────────────────────────────────────────
-        $businessAdmin = Role::firstOrCreate(['name' => 'BusinessAdmin', 'guard_name' => 'web']);
+        $businessAdmin = Role::firstOrCreate(['name' => 'BusinessAdmin', 'guard_name' => 'sanctum']);
         $businessAdmin->syncPermissions([
             // Tenant management
             'tenant.manage',
@@ -199,7 +199,7 @@ class RolesAndPermissionsSeeder extends Seeder
         // ROLE: Manager
         // Scope: Mid-level supervisor. Can manage day-to-day ops but not billing/roles.
         // ────────────────────────────────────────────────────────────────────────
-        $manager = Role::firstOrCreate(['name' => 'Manager', 'guard_name' => 'web']);
+        $manager = Role::firstOrCreate(['name' => 'Manager', 'guard_name' => 'sanctum']);
         $manager->syncPermissions([
             // Users (can view team, but cannot delete or manage roles)
             'users.view',
@@ -248,7 +248,7 @@ class RolesAndPermissionsSeeder extends Seeder
         // ROLE: Cashier
         // Scope: POS terminal operator. Minimal permissions.
         // ────────────────────────────────────────────────────────────────────────
-        $cashier = Role::firstOrCreate(['name' => 'Cashier', 'guard_name' => 'web']);
+        $cashier = Role::firstOrCreate(['name' => 'Cashier', 'guard_name' => 'sanctum']);
         $cashier->syncPermissions([
             'pos.access',
             'sales.view',
@@ -267,7 +267,7 @@ class RolesAndPermissionsSeeder extends Seeder
         // ROLE: InventoryManager
         // Scope: Stock and catalog management only.
         // ────────────────────────────────────────────────────────────────────────
-        $inventoryManager = Role::firstOrCreate(['name' => 'InventoryManager', 'guard_name' => 'web']);
+        $inventoryManager = Role::firstOrCreate(['name' => 'InventoryManager', 'guard_name' => 'sanctum']);
         $inventoryManager->syncPermissions([
             'products.view',
             'products.create',
@@ -294,7 +294,7 @@ class RolesAndPermissionsSeeder extends Seeder
         // ROLE: Accountant
         // Scope: Financial reporting and expense management only.
         // ────────────────────────────────────────────────────────────────────────
-        $accountant = Role::firstOrCreate(['name' => 'Accountant', 'guard_name' => 'web']);
+        $accountant = Role::firstOrCreate(['name' => 'Accountant', 'guard_name' => 'sanctum']);
         $accountant->syncPermissions([
             'sales.view',
             'reports.view',

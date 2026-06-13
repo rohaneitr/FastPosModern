@@ -2,12 +2,11 @@
 
 namespace App\Modules\Sales\Models;
 
+use App\Modules\Core\Traits\Auditable;
 use App\Modules\Tenant\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Spatie\Activitylog\Models\Concerns\LogsActivity;
-use Spatie\Activitylog\Support\LogOptions;
 
 /**
  * Sale (Transaction) Model
@@ -18,17 +17,13 @@ use Spatie\Activitylog\Support\LogOptions;
  */
 class Sale extends Model
 {
-    use BelongsToBusiness, LogsActivity, SoftDeletes;
+    use BelongsToBusiness, Auditable, SoftDeletes;
 
     protected $table = 'transactions';
     protected $guarded = ['id'];
 
-    public function getActivitylogOptions(): LogOptions
-    {
-        return LogOptions::defaults()
-            ->logUnguarded()
-            ->logOnlyDirty();
-    }
+    // Fields to completely omit from audit logs (not masked, fully excluded)
+    protected array $auditExclude = ['idempotency_key'];
 
     // ── Relationships ─────────────────────────────────────────────────────────
 

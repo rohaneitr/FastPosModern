@@ -2,13 +2,14 @@
 
 namespace App\Modules\Inventory\Models;
 
+use App\Modules\Core\Traits\Auditable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Modules\Tenant\Traits\BelongsToBusiness;
 
 class Product extends Model
 {
-    use BelongsToBusiness, SoftDeletes;
+    use BelongsToBusiness, Auditable, SoftDeletes;
 
     protected $guarded = ['id'];
 

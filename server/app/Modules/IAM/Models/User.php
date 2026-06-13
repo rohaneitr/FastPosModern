@@ -10,14 +10,13 @@ use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Modules\Tenant\Models\Business;
 use Laravel\Sanctum\HasApiTokens;
-use Spatie\Activitylog\Models\Concerns\LogsActivity;
-use Spatie\Activitylog\Support\LogOptions;
+use App\Modules\Core\Traits\Auditable;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes, LogsActivity;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes, Auditable;
 
-    protected $guard_name = 'web';
+    protected $guard_name = 'sanctum';
 
 
     /**
@@ -69,14 +68,9 @@ class User extends Authenticatable
      */
     protected $appends = ['name'];
 
-    public function getActivitylogOptions(): LogOptions
-    {
-        return LogOptions::defaults()
-            ->logFillable()
-            ->dontLogIfAttributesChangedOnly(['remember_token'])
-            ->logOnlyDirty()
-            ->logExcept(['password', 'two_factor_secret', 'two_factor_recovery_codes']);
-    }
+    // Auditable trait handles all activity logging with PII masking built-in.
+    // two_factor_secret and two_factor_recovery_codes are in Activity::MASKED_FIELDS.
+    // remember_token changes are suppressed via logOnlyDirty + MASKED_FIELDS exclusion.
 
     /**
      * Get a display name from first_name + last_name.

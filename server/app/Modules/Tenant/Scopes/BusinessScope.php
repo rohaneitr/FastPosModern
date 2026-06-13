@@ -15,7 +15,8 @@ class BusinessScope implements Scope
      * Resolution order:
      *   1. Authenticated HTTP user (auth()->user()->business_id) — for all HTTP requests
      *   2. TenantContext::get() — for queued jobs and Artisan commands
-     *   3. No scope applied — SuperAdmin global operations with no tenant context set
+     *   3. Explicit SuperAdmin check — Bypasses scope for cross-tenant operations
+     *   4. FAIL CLOSED — If none of the above match, the query is aggressively clamped.
      */
     public function apply(Builder $builder, Model $model)
     {
@@ -25,8 +26,16 @@ class BusinessScope implements Scope
         } elseif (TenantContext::isActive()) {
             // Background job / Artisan path — explicit tenant context
             $builder->where($model->getTable() . '.business_id', TenantContext::get());
+        } else {
+            // Explicit SuperAdmin check
+            if (auth()->hasUser() && auth()->user()->hasRole('SuperAdmin')) {
+                // No scope applied — intentional for explicitly verified SuperAdmin
+                return;
+            }
+
+            // FAIL CLOSED pattern: Aggressively clamp the query to prevent data leakage
+            $builder->whereRaw('1 = 0');
         }
-        // else: no scope — intentional for SuperAdmin cross-tenant operations
     }
 }
 

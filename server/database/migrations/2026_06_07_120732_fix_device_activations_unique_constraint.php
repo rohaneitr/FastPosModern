@@ -12,12 +12,18 @@ return new class extends Migration
     public function up(): void
     {
         if (Schema::hasTable('device_activations')) {
-            Schema::table('device_activations', function (Blueprint $table) {
-                // Drop the old unique constraint
-                $table->dropUnique(['license_key']);
+            $indexes = Schema::getIndexes('device_activations');
+            $hasOldIndex = collect($indexes)->contains('name', 'device_activations_license_key_unique');
+            $hasNewIndex = collect($indexes)->contains('name', 'device_activations_license_key_device_fingerprint_unique');
+            
+            Schema::table('device_activations', function (Blueprint $table) use ($hasOldIndex, $hasNewIndex) {
+                if ($hasOldIndex) {
+                    $table->dropUnique('device_activations_license_key_unique');
+                }
                 
-                // Add the correct composite unique index
-                $table->unique(['license_key', 'device_fingerprint']);
+                if (!$hasNewIndex) {
+                    $table->unique(['license_key', 'device_fingerprint']);
+                }
             });
         }
     }

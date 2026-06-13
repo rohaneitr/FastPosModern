@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use App\Modules\Tenant\Models\Business;
+use App\Modules\Tenant\Services\TenantContextCache;
 
 class CheckSubscription
 {
@@ -27,7 +28,12 @@ class CheckSubscription
             return response()->json(['message' => 'No business associated with user'], 403);
         }
 
-        $business = Business::with('subscription.plan')->find($user->business_id);
+        // Redis-cached Business+subscription+plan read.
+        // Cache miss (~first request, or after Business::save() invalidation):
+        //   → 3 SQL queries → result stored in Redis for TENANT_CACHE_TTL seconds.
+        // Cache hit (~all subsequent requests within TTL):
+        //   → sub-millisecond Redis read → zero SQL queries.
+        $business = TenantContextCache::get($user->business_id);
 
         if (!$business || !$business->is_active) {
             return response()->json(['message' => 'Business is inactive or suspended'], 403);

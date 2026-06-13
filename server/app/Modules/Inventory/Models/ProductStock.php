@@ -2,6 +2,7 @@
 
 namespace App\Modules\Inventory\Models;
 
+use App\Modules\Core\Traits\Auditable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Modules\Tenant\Traits\BelongsToBusiness;
@@ -23,7 +24,7 @@ use App\Modules\Tenant\Traits\BelongsToBusiness;
  */
 class ProductStock extends Model
 {
-    use BelongsToBusiness;
+    use BelongsToBusiness, Auditable;
 
     protected $table = 'product_stocks';
 
